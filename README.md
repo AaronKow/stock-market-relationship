@@ -63,3 +63,14 @@ Seed output is intentionally synthetic and exists only for development/demo work
 
 - **Netlify (`frontend`)**: Use `npm --workspace frontend run build` as build command; publish directory is framework-specific (commonly `frontend/dist`).
 - **Render (`backend`)**: Build with `npm --workspace backend run build` and run with `npm --workspace backend run start`.
+
+## Optional deploy-hook strategy (no secrets in CI)
+
+The CI workflow intentionally avoids platform secrets. For MVP deployments, use provider-managed deploy hooks configured directly in Netlify/Render:
+
+1. Create a deploy hook in Netlify (frontend) and/or Render (backend).
+2. Store each hook URL in that platform's own UI or secret manager (not in this repository and not in GitHub Actions YAML).
+3. Trigger hooks from trusted systems only (e.g., release tooling, manual ops runbook, or a secured external automation service).
+4. Keep GitHub Actions focused on validation (`build`, `prisma generate`, smoke checks) and let deploy platforms pull from the target branch.
+
+This keeps CI portable and minimizes secret handling risk during early-stage development.
