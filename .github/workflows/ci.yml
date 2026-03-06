@@ -65,13 +65,14 @@ jobs:
 
       - name: Backend startup smoke test
         shell: bash
+        env:
+          PORT: "4010"
+          NODE_ENV: ci
+          CLIENT_URL: http://localhost:5173
+          DATABASE_URL: postgresql://ci:ci@localhost:5432/ci
         run: |
           set -euo pipefail
 
-          PORT=4010 \
-          NODE_ENV=ci \
-          CLIENT_URL=http://localhost:5173 \
-          DATABASE_URL=postgresql://ci:ci@localhost:5432/ci \
           npm --workspace backend run start &
 
           SERVER_PID=$!
