@@ -1,19 +1,13 @@
 import DataTable from '../ui/DataTable';
 import SignalBadge from '../ui/SignalBadge';
-
-function formatDate(value) {
-  if (!value) {
-    return '—';
-  }
-  return new Date(value).toLocaleString();
-}
+import { formatDateTime } from '../../utils/format';
 
 export default function SignalsTable({ rows, sortKey, sortDirection, onSort }) {
   const columns = [
     {
       key: 'occurredAt',
       label: 'Timestamp',
-      render: (row) => formatDate(row.occurredAt),
+      render: (row) => formatDateTime(row.occurredAt),
     },
     {
       key: 'company',

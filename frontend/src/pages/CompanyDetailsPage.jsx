@@ -14,33 +14,37 @@ export default function CompanyDetailsPage() {
   const [company, setCompany] = useState(null);
   const [signals, setSignals] = useState([]);
   const [relationships, setRelationships] = useState([]);
+  const [sentiment, setSentiment] = useState('ALL');
   const [sortKey, setSortKey] = useState('occurredAt');
   const [sortDirection, setSortDirection] = useState('desc');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
+  const loadDetails = async () => {
+    setLoading(true);
+    setError('');
+    try {
+      const [companyPayload, signalPayload, relationshipPayload] = await Promise.all([
+        apiFetch(`/companies/${id}`),
+        apiFetch(`/signals?companyId=${id}&limit=50`),
+        apiFetch(`/relationships?companyId=${id}`),
+      ]);
+      setCompany(companyPayload || null);
+      setSignals(Array.isArray(signalPayload) ? signalPayload : []);
+      setRelationships(Array.isArray(relationshipPayload) ? relationshipPayload : []);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   useEffect(() => {
-    let active = true;
-
-    Promise.all([apiFetch(`/companies/${id}`), apiFetch(`/signals?companyId=${id}&limit=50`), apiFetch(`/relationships?companyId=${id}`)])
-      .then(([companyPayload, signalPayload, relationshipPayload]) => {
-        if (!active) {
-          return;
-        }
-        setCompany(companyPayload || null);
-        setSignals(Array.isArray(signalPayload) ? signalPayload : []);
-        setRelationships(Array.isArray(relationshipPayload) ? relationshipPayload : []);
-      })
-      .catch((err) => active && setError(err.message))
-      .finally(() => active && setLoading(false));
-
-    return () => {
-      active = false;
-    };
+    loadDetails();
   }, [id]);
 
   const sortedSignals = useMemo(() => {
-    const rows = [...signals];
+    const rows = signals.filter((signal) => sentiment === 'ALL' || signal.sentiment === sentiment);
     rows.sort((left, right) => {
       if (sortKey === 'confidence') {
         return compareValues(Number(left.confidence) || 0, Number(right.confidence) || 0, sortDirection);
@@ -48,18 +52,18 @@ export default function CompanyDetailsPage() {
       return compareValues(left[sortKey] || '', right[sortKey] || '', sortDirection);
     });
     return rows;
-  }, [signals, sortDirection, sortKey]);
+  }, [signals, sentiment, sortDirection, sortKey]);
 
   if (loading) {
-    return <LoadingState message="Loading company details..." />;
+    return <LoadingState message="Loading company details..." details="Fetching score snapshot, relationships, and latest 50 signal events." />;
   }
 
   if (error) {
-    return <ErrorState message={error} />;
+    return <ErrorState message={error} onAction={loadDetails} />;
   }
 
   if (!company) {
-    return <EmptyState message="Company details are unavailable." />;
+    return <EmptyState message="Company details are unavailable." actionLabel="Retry" onAction={loadDetails} />;
   }
 
   return (
@@ -79,9 +83,45 @@ export default function CompanyDetailsPage() {
 
       <ScoreExplanationPanel snapshot={company.latestScore} />
 
-      <Card title="Recent Signals" subtitle="Sortable company signal feed">
+      <Card
+        title="Recent Signals"
+        subtitle="Sortable company signal feed"
+        action={
+          <div className="flex flex-wrap gap-2">
+            <select
+              className="rounded-lg border border-slate-300 px-3 py-1.5 text-xs text-slate-700"
+              value={sentiment}
+              onChange={(event) => setSentiment(event.target.value)}
+            >
+              <option value="ALL">All sentiment</option>
+              <option value="POSITIVE">Positive</option>
+              <option value="NEUTRAL">Neutral</option>
+              <option value="NEGATIVE">Negative</option>
+            </select>
+            <select
+              className="rounded-lg border border-slate-300 px-3 py-1.5 text-xs text-slate-700"
+              value={`${sortKey}:${sortDirection}`}
+              onChange={(event) => {
+                const [key, direction] = event.target.value.split(':');
+                setSortKey(key);
+                setSortDirection(direction);
+              }}
+            >
+              <option value="occurredAt:desc">Newest first</option>
+              <option value="occurredAt:asc">Oldest first</option>
+              <option value="confidence:desc">Confidence high-low</option>
+              <option value="confidence:asc">Confidence low-high</option>
+            </select>
+          </div>
+        }
+      >
         {sortedSignals.length === 0 ? (
-          <EmptyState message="No recent signals for this company." />
+          <EmptyState
+            message="No recent signals for this company."
+            details="Try changing sentiment filter to view available events."
+            actionLabel="Reset sentiment"
+            onAction={() => setSentiment('ALL')}
+          />
         ) : (
           <SignalsTable
             rows={sortedSignals}

@@ -1,35 +1,52 @@
 # Stock Market Relationship Monorepo
 
-A full-stack monorepo for exploring relationships between companies, earnings events, and synthetic scoring signals.
+A full-stack monorepo for exploring company relationships, synthetic market signals, and score snapshots for research workflows.
 
-> **Disclaimer:** This project is a research and educational tool. It is **not** financial advice, investment advice, or a recommendation to buy/sell any security.
+> Disclaimer: This project is for research and education only. It is not financial advice.
 
-## Architecture and monorepo layout
+## Architecture overview
 
-This repository uses npm workspaces and is split into deployable apps plus a shared package:
+The repo uses npm workspaces and has three packages:
 
-- `frontend/` — React + Vite SPA for dashboards, tables, graph exploration, and watchlists.
-- `backend/` — Node.js + Express API with Prisma/PostgreSQL persistence and scheduled score refresh jobs.
-- `shared/` — Shared workspace package for cross-project code.
-- `.github/workflows/ci.yml` — CI pipeline for install, optional checks, build, Prisma generation, and API smoke testing.
+- `frontend/`: React + Vite SPA with dashboards, sortable/filterable data tables, relationship graph exploration, and watchlist workflows.
+- `backend/`: Express API with Prisma + PostgreSQL persistence, scheduled jobs, and score calculation services.
+- `shared/`: Reserved for cross-workspace shared code.
 
-## Local setup prerequisites
+Runtime flow:
 
-Install the following before starting:
+1. Frontend calls backend REST APIs under `/api`.
+2. Backend services query Prisma models and return normalized response payloads (`{ data: ... }`).
+3. Scheduler runs score recomputation and script-backed ingestion placeholders on cron schedules.
 
-- Node.js 18+ (Node 20 recommended to match CI)
+## Data model overview
+
+Schema is defined in [`backend/prisma/schema.prisma`](backend/prisma/schema.prisma).
+
+Core entities:
+
+- `Company`: tracked security metadata.
+- `EarningsEvent`: earnings calendar and reported metrics.
+- `Relationship`: directional links between companies (`SUPPLIER`, `CUSTOMER`, `PEER`, etc.) with strength/confidence.
+- `SignalEvent`: timestamped events with `signalType`, `sentiment`, and confidence; optionally tied to relationships/earnings.
+- `CompanyScoreSnapshot`: daily score output per company.
+- `Watchlist` + `WatchlistItem`: user-defined tracking collections.
+- `IngestionLog`: ingestion run auditing (status, counts, errors).
+
+## Local setup
+
+Prerequisites:
+
+- Node.js 18+ (Node 20 recommended)
 - npm 9+
 - PostgreSQL 14+
 
-Install dependencies from repository root:
+Install dependencies from repo root:
 
 ```bash
 npm install
 ```
 
-## Environment configuration
-
-Copy example env files and fill values:
+Create env files:
 
 ```bash
 cp .env.example .env
@@ -37,144 +54,125 @@ cp frontend/.env.example frontend/.env
 cp backend/.env.example backend/.env
 ```
 
-### Required variables
+Required backend env values (`backend/.env`):
 
-- Frontend (`frontend/.env`)
-  - `VITE_API_BASE_URL` (example: `http://localhost:4000/api`)
-- Backend (`backend/.env`)
-  - `PORT` (example: `4000`)
-  - `DATABASE_URL` (PostgreSQL connection string)
-  - `CLIENT_URL` (frontend origin, example: `http://localhost:5173`)
-  - `NODE_ENV` (`development`, `production`, or `ci`)
+- `PORT`
+- `DATABASE_URL`
+- `CLIENT_URL`
+- `NODE_ENV`
+- Optional: `ENABLE_SCHEDULER` (`true` by default)
+- Optional cron overrides:
+  - `CRON_INGEST_EARNINGS`
+  - `CRON_INGEST_RELATIONSHIPS`
+  - `CRON_INGEST_SIGNALS`
 
-## PostgreSQL + Prisma setup
+Required frontend env values (`frontend/.env`):
 
-1. Create a local PostgreSQL database (example: `stock_relationship`).
-2. Set `DATABASE_URL` in `backend/.env`.
-3. Generate Prisma client:
+- `VITE_API_BASE_URL` (example: `http://localhost:4000/api`)
+
+## Database + seed usage
+
+Generate Prisma client:
 
 ```bash
 npm --workspace backend run prisma:generate
 ```
 
-## Migrations + seed
-
-Run database migrations and seed synthetic demo data:
+Run migrations + seed synthetic data:
 
 ```bash
 npm --workspace backend run prisma:migrate:dev
 npm --workspace backend run db:seed
 ```
 
-The seeded data is synthetic and intended for research/testing workflows only.
+Recompute score snapshots after seed:
 
-## Run frontend/backend locally
+```bash
+npm --workspace backend run scores:recompute
+```
 
-From repository root:
+## Running locally
+
+From repo root:
 
 ```bash
 npm run dev
 ```
 
-Or run services independently:
+Or separately:
 
 ```bash
 npm run dev:frontend
 npm run dev:backend
 ```
 
-### Additional useful commands
+Build all workspaces:
 
 ```bash
 npm run build
-npm --workspace frontend run build
-npm --workspace backend run build
-npm --workspace backend run start
 ```
+
+## Ingestion scaffolding and cron jobs
+
+Scheduler entrypoint: [`backend/src/scheduler/jobs.js`](backend/src/scheduler/jobs.js)
+
+Current cron jobs:
+
+- `ingest-earnings`
+- `ingest-relationships`
+- `ingest-signals`
+- `recalculate-company-scores`
+
+The three ingestion jobs call script placeholders in `scripts/ingestion/`:
+
+- `scripts/ingestion/earningsIngestion.js`
+- `scripts/ingestion/relationshipsIngestion.js`
+- `scripts/ingestion/signalsIngestion.js`
+
+Run placeholders manually:
+
+```bash
+npm run ingest:earnings
+npm run ingest:relationships
+npm run ingest:signals
+```
+
+## Scoring explanation
+
+Scoring logic is in [`backend/src/services/scoringEngine.js`](backend/src/services/scoringEngine.js).
+
+`totalScore` (clamped 0-100) is computed from:
+
+- Base score anchor (`50`)
+- Signal contribution: sentiment * confidence * freshness decay
+- Relationship-weighted signal contribution: adds relationship strength/confidence weighting
+- Earnings timing boost: increases score as next earnings date approaches inside configured window
+- Risk penalty: clustered severe recent negative signals reduce score
+- Revisions component: currently scaffolded (`enabled: false`, score `0`)
+
+Each snapshot also stores `explanationJson` so UI can show a transparent component breakdown.
 
 ## API overview
 
-Backend routes are mounted under `/api`:
-
-- `GET /api/health` — service health and runtime metadata.
-- `GET /api/companies` — company list with latest score snapshot.
-- `GET /api/companies/:id` — company details + latest score explanation JSON.
-- `GET /api/earnings/upcoming` — upcoming earnings feed (mock data).
-- `GET /api/signals` — signal feed (mock data).
-- `GET /api/relationships` — company relationship graph edges/nodes (mock data).
-- `GET /api/scores/top?refresh=true|false` — top score snapshots; optional on-demand recalculation.
-- `POST /api/watchlists` — create watchlist (`{ "name": "..." }`).
-- `POST /api/watchlists/:id/items` — add watchlist item (`{ "companyId": number }`).
-- `DELETE /api/watchlists/:id/items/:itemId` — remove watchlist item.
-
-## Page overview (frontend)
-
-- `/` — Dashboard summary widgets and top-level market relationship view.
-- `/companies` — Company table/list and navigation to details.
-- `/companies/:id` — Company details, latest score, and explanation.
-- `/signals` — Signal feed view.
-- `/graph` — Relationship graph exploration.
-- `/watchlist` — Watchlist management flow.
-
-## Deployment
-
-### Netlify (frontend)
-
-Use `frontend/netlify.toml` or equivalent UI settings:
-
-- **Base directory (frontend root):** `frontend`
-- **Build command:** `npm run build`
-- **Publish directory:** `dist`
-- **Required environment variables:**
-  - `VITE_API_BASE_URL` (public backend API URL including `/api`)
-
-Recommended: keep Netlify environment values in the Netlify UI (not committed into the repo).
-
-### Render (backend)
-
-Use `backend/render.yaml` or equivalent UI settings:
-
-- **Root directory (backend root):** `backend`
-- **Build command:** `npm install --include=dev && npm run prisma:generate`
-- **Start command:** `npm run start:with-migrate` (runs `prisma migrate deploy` before boot)
-- **Health check endpoint:** `/api/health`
-- **Required environment variables:**
-  - `NODE_ENV=production`
-  - `PORT=10000` (or Render-provided port)
-  - `DATABASE_URL`
-  - `CLIENT_URL` (frontend origin)
-  - `RENDER_RUN_SEED_ON_DEPLOY=false` (set to `true` only when you explicitly want to reseed)
-
-## GitHub Actions CI behavior
-
-The CI workflow (`.github/workflows/ci.yml`) runs on pushes to `main` and all pull requests. It performs:
-
-1. Checkout + Node 20 setup.
-2. `npm ci --workspaces --include-workspace-root`.
-3. Optional `lint`/`test` scripts if defined in root/frontend/backend.
-4. Frontend build validation.
-5. Backend Prisma client generation.
-6. Backend build validation.
-7. Backend startup smoke test against `http://127.0.0.1:$PORT/api/health`.
-
-## UI copy guidance (disclaimer language)
-
-Any user-facing area that displays scores, rankings, or “signals” should include explicit cautionary text such as:
-
-- “For research purposes only — not financial advice.”
-- “Synthetic/experimental analytics; verify independently before making decisions.”
-
-Recommended placements:
-
-- Dashboard header/subheader.
-- Signals page near filters/table.
-- Company detail score card footnote.
-- Watchlist actions and alert-like UI elements.
+- `GET /api/health`
+- `GET /api/companies`
+- `GET /api/companies/:id`
+- `GET /api/earnings/upcoming`
+- `GET /api/signals`
+- `GET /api/relationships`
+- `GET /api/scores/top`
+- `GET /api/watchlists`
+- `POST /api/watchlists`
+- `GET /api/watchlists/:id`
+- `POST /api/watchlists/:id/items`
+- `DELETE /api/watchlists/:id/items/:itemId`
 
 ## Future improvements
 
-- **Live ingestion:** Replace mock feeds with scheduled/streaming market + earnings data ingestion.
-- **Alerts:** Add threshold/event-based notifications (email/webhooks/in-app).
-- **Backtesting:** Evaluate score behavior against historical outcomes with configurable windows.
-- **Auth hardening:** Add robust authentication, authorization, audit logging, and rate limits.
-- **Deploy hooks:** Introduce secure deploy-hook orchestration for release automation across Netlify/Render.
+- Replace placeholder ingestion scripts with real provider adapters and upsert pipelines.
+- Persist scheduler runs into `IngestionLog` for dashboard observability.
+- Add deduplication/idempotency keys for ingestion safety.
+- Add alerting for ingestion failures and score anomalies.
+- Introduce authentication and per-user watchlist authorization.
+- Add historical backtesting and score calibration tooling.
+- Add integration tests for API routes + scheduler contract tests.

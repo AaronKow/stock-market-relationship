@@ -14,28 +14,28 @@ export default function SignalsPage() {
   const [companyId, setCompanyId] = useState('ALL');
   const [sentiment, setSentiment] = useState('ALL');
   const [signalType, setSignalType] = useState('ALL');
+  const [minimumConfidence, setMinimumConfidence] = useState('ALL');
   const [sortKey, setSortKey] = useState('occurredAt');
   const [sortDirection, setSortDirection] = useState('desc');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
+  const loadSignals = async () => {
+    setLoading(true);
+    setError('');
+    try {
+      const [signalPayload, companyPayload] = await Promise.all([apiFetch('/signals?limit=250'), apiFetch('/companies')]);
+      setSignals(Array.isArray(signalPayload) ? signalPayload : []);
+      setCompanies(Array.isArray(companyPayload) ? companyPayload : []);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   useEffect(() => {
-    let active = true;
-
-    Promise.all([apiFetch('/signals?limit=250'), apiFetch('/companies')])
-      .then(([signalPayload, companyPayload]) => {
-        if (!active) {
-          return;
-        }
-        setSignals(Array.isArray(signalPayload) ? signalPayload : []);
-        setCompanies(Array.isArray(companyPayload) ? companyPayload : []);
-      })
-      .catch((err) => active && setError(err.message))
-      .finally(() => active && setLoading(false));
-
-    return () => {
-      active = false;
-    };
+    loadSignals();
   }, []);
 
   const signalTypes = useMemo(() => ['ALL', ...new Set(signals.map((signal) => signal.signalType).filter(Boolean))], [signals]);
@@ -47,15 +47,16 @@ export default function SignalsPage() {
       const byCompany = companyId === 'ALL' || signal.companyId === companyId;
       const bySentiment = sentiment === 'ALL' || signal.sentiment === sentiment;
       const byType = signalType === 'ALL' || signal.signalType === signalType;
+      const byConfidence = minimumConfidence === 'ALL' || (Number(signal.confidence) || 0) >= Number(minimumConfidence);
       const byQuery =
         !normalized ||
         `${signal.headline || ''} ${signal.description || ''} ${signal.company?.ticker || ''} ${signal.company?.name || ''}`
           .toLowerCase()
           .includes(normalized);
 
-      return byCompany && bySentiment && byType && byQuery;
+      return byCompany && bySentiment && byType && byConfidence && byQuery;
     });
-  }, [signals, query, companyId, sentiment, signalType]);
+  }, [signals, query, companyId, sentiment, signalType, minimumConfidence]);
 
   const sorted = useMemo(() => {
     const rows = [...filtered];
@@ -80,7 +81,28 @@ export default function SignalsPage() {
       </div>
 
       <Card title="Signals" subtitle="Research feed only. Verify all events independently.">
-        <FilterControls searchValue={query} onSearchChange={setQuery} searchPlaceholder="Search headline, ticker, or description">
+        <FilterControls
+          searchValue={query}
+          onSearchChange={setQuery}
+          searchPlaceholder="Search headline, ticker, or description"
+          rightContent={
+            <button
+              type="button"
+              className="rounded-lg border border-slate-300 px-3 py-2 text-xs font-medium text-slate-600 hover:bg-slate-100"
+              onClick={() => {
+                setQuery('');
+                setCompanyId('ALL');
+                setSentiment('ALL');
+                setSignalType('ALL');
+                setMinimumConfidence('ALL');
+                setSortKey('occurredAt');
+                setSortDirection('desc');
+              }}
+            >
+              Reset filters
+            </button>
+          }
+        >
           <select
             className="rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-700"
             value={companyId}
@@ -116,11 +138,49 @@ export default function SignalsPage() {
               </option>
             ))}
           </select>
+          <select
+            className="rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-700"
+            value={minimumConfidence}
+            onChange={(event) => setMinimumConfidence(event.target.value)}
+          >
+            <option value="ALL">Any confidence</option>
+            <option value="0.8">80%+</option>
+            <option value="0.6">60%+</option>
+            <option value="0.4">40%+</option>
+          </select>
+          <select
+            className="rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-700"
+            value={`${sortKey}:${sortDirection}`}
+            onChange={(event) => {
+              const [key, direction] = event.target.value.split(':');
+              setSortKey(key);
+              setSortDirection(direction);
+            }}
+          >
+            <option value="occurredAt:desc">Time (Newest)</option>
+            <option value="occurredAt:asc">Time (Oldest)</option>
+            <option value="confidence:desc">Confidence (High-Low)</option>
+            <option value="confidence:asc">Confidence (Low-High)</option>
+            <option value="signalType:asc">Type (A-Z)</option>
+          </select>
         </FilterControls>
 
-        {loading && <LoadingState message="Loading signal events..." />}
-        {!loading && error && <ErrorState message={error} />}
-        {!loading && !error && sorted.length === 0 && <EmptyState message="No signals match current filters." />}
+        {loading && <LoadingState message="Loading signal events..." details="Pulling the latest event feed and company metadata." />}
+        {!loading && error && <ErrorState message={error} onAction={loadSignals} />}
+        {!loading && !error && sorted.length === 0 && (
+          <EmptyState
+            message="No signals match current filters."
+            details="Try broader sentiment/type filters or reduce the confidence threshold."
+            actionLabel="Reset filters"
+            onAction={() => {
+              setCompanyId('ALL');
+              setSentiment('ALL');
+              setSignalType('ALL');
+              setMinimumConfidence('ALL');
+              setQuery('');
+            }}
+          />
+        )}
         {!loading && !error && sorted.length > 0 && (
           <SignalsTable
             rows={sorted}

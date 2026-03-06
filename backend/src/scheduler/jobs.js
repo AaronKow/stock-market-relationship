@@ -1,6 +1,8 @@
 const cron = require('node-cron');
+const path = require('node:path');
 const logger = require('../utils/logger');
 const { recalculateAllCompanyScores } = require('../services/scoringEngine');
+const { runNodeScript } = require('./scriptJob');
 
 function createJob(name, schedule, task) {
   return cron.schedule(schedule, async () => {
@@ -23,16 +25,39 @@ function createJob(name, schedule, task) {
   });
 }
 
+function createScriptBackedJob({ name, schedule, scriptFile }) {
+  const scriptPath = path.resolve(__dirname, '../../../scripts/ingestion', scriptFile);
+
+  return createJob(name, schedule, async () => {
+    const result = await runNodeScript({
+      scriptPath,
+      env: { INGESTION_JOB_NAME: name },
+    });
+
+    logger.info('Ingestion script completed', {
+      job: name,
+      scriptFile,
+      output: result.stdout || null,
+    });
+  });
+}
+
 function startScheduler() {
   const jobs = [
-    createJob('ingest-earnings', '*/30 * * * *', async () => {
-      logger.info('Stub earnings ingestion executed');
+    createScriptBackedJob({
+      name: 'ingest-earnings',
+      schedule: process.env.CRON_INGEST_EARNINGS || '*/30 * * * *',
+      scriptFile: 'earningsIngestion.js',
     }),
-    createJob('ingest-relationships', '*/45 * * * *', async () => {
-      logger.info('Stub relationships ingestion executed');
+    createScriptBackedJob({
+      name: 'ingest-relationships',
+      schedule: process.env.CRON_INGEST_RELATIONSHIPS || '*/45 * * * *',
+      scriptFile: 'relationshipsIngestion.js',
     }),
-    createJob('ingest-signals', '0 * * * *', async () => {
-      logger.info('Stub signals ingestion executed');
+    createScriptBackedJob({
+      name: 'ingest-signals',
+      schedule: process.env.CRON_INGEST_SIGNALS || '0 * * * *',
+      scriptFile: 'signalsIngestion.js',
     }),
     createJob('recalculate-company-scores', '*/15 * * * *', async () => {
       const snapshots = await recalculateAllCompanyScores();

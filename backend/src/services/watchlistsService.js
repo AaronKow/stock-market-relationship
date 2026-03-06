@@ -1,6 +1,8 @@
 const { prisma } = require('./prisma');
 const AppError = require('../utils/appError');
 
+const watchlistCompanySelect = { id: true, ticker: true, name: true, sector: true };
+
 async function resolveUserId(explicitUserId) {
   if (explicitUserId) {
     const user = await prisma.user.findUnique({ where: { id: explicitUserId }, select: { id: true } });
@@ -33,7 +35,7 @@ async function createWatchlist({ name, description = null, userId = null, isDefa
         items: {
           include: {
             company: {
-              select: { id: true, ticker: true, name: true },
+              select: watchlistCompanySelect,
             },
           },
         },
@@ -67,7 +69,7 @@ async function addWatchlistItem({ watchlistId, companyId, notes = null }) {
       },
       include: {
         company: {
-          select: { id: true, ticker: true, name: true },
+          select: watchlistCompanySelect,
         },
       },
     });
@@ -87,7 +89,7 @@ async function removeWatchlistItem({ watchlistId, itemId }) {
 
   const item = await prisma.watchlistItem.findUnique({
     where: { id: itemId },
-    include: { company: { select: { id: true, ticker: true, name: true } } },
+    include: { company: { select: watchlistCompanySelect } },
   });
 
   if (!item || item.watchlistId !== watchlistId) {
@@ -119,7 +121,7 @@ async function listWatchlists({ userId = null } = {}) {
       items: {
         include: {
           company: {
-            select: { id: true, ticker: true, name: true, sector: true },
+            select: watchlistCompanySelect,
           },
         },
         orderBy: { addedAt: 'desc' },
@@ -136,7 +138,7 @@ async function getWatchlistById({ id }) {
       items: {
         include: {
           company: {
-            select: { id: true, ticker: true, name: true, sector: true },
+            select: watchlistCompanySelect,
           },
         },
         orderBy: { addedAt: 'desc' },

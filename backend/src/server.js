@@ -12,7 +12,7 @@ const server = app.listen(config.port, () => {
 });
 
 let stopScheduler;
-if (config.nodeEnv !== 'test') {
+if (config.nodeEnv !== 'test' && config.enableScheduler) {
   stopScheduler = startScheduler();
 }
 

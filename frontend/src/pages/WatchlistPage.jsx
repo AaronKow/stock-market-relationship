@@ -1,16 +1,9 @@
 import { useEffect, useMemo, useState } from 'react';
-import { apiFetch } from '../api/client';
+import { apiDelete, apiFetch, apiPost } from '../api/client';
 import WatchlistPanel from '../components/watchlist/WatchlistPanel';
 import Card from '../components/ui/Card';
 import StatCard from '../components/ui/StatCard';
 import { EmptyState, ErrorState, LoadingState } from '../components/ui/States';
-
-async function postJson(path, body) {
-  return apiFetch(path, {
-    method: 'POST',
-    body: JSON.stringify(body),
-  });
-}
 
 export default function WatchlistPage() {
   const [watchlists, setWatchlists] = useState([]);
@@ -21,35 +14,41 @@ export default function WatchlistPage() {
   const [loading, setLoading] = useState(true);
   const [mutating, setMutating] = useState(false);
   const [error, setError] = useState('');
+  const [notice, setNotice] = useState('');
 
-  const load = async () => {
-    const [watchlistPayload, companyPayload] = await Promise.all([apiFetch('/watchlists'), apiFetch('/companies')]);
-
-    const watchlistRows = Array.isArray(watchlistPayload) ? watchlistPayload : [];
-    const companyRows = Array.isArray(companyPayload) ? companyPayload : [];
-
-    setWatchlists(watchlistRows);
-    setCompanies(companyRows);
-
-    if (!selectedId && watchlistRows.length > 0) {
-      setSelectedId(watchlistRows[0].id);
+  const load = async (keepLoading = false) => {
+    if (keepLoading) {
+      setLoading(true);
     }
 
-    if (selectedId && !watchlistRows.some((watchlist) => watchlist.id === selectedId)) {
-      setSelectedId(watchlistRows[0]?.id || '');
+    try {
+      const [watchlistPayload, companyPayload] = await Promise.all([apiFetch('/watchlists'), apiFetch('/companies')]);
+
+      const watchlistRows = Array.isArray(watchlistPayload) ? watchlistPayload : [];
+      const companyRows = Array.isArray(companyPayload) ? companyPayload : [];
+
+      setWatchlists(watchlistRows);
+      setCompanies(companyRows);
+
+      if (!selectedId && watchlistRows.length > 0) {
+        setSelectedId(watchlistRows[0].id);
+      }
+
+      if (selectedId && !watchlistRows.some((watchlist) => watchlist.id === selectedId)) {
+        setSelectedId(watchlistRows[0]?.id || '');
+      }
+    } finally {
+      if (keepLoading) {
+        setLoading(false);
+      }
     }
   };
 
   useEffect(() => {
-    let active = true;
-
-    load()
-      .catch((err) => active && setError(err.message))
-      .finally(() => active && setLoading(false));
-
-    return () => {
-      active = false;
-    };
+    load(true).catch((err) => {
+      setError(err.message);
+      setLoading(false);
+    });
   }, []);
 
   const companyById = useMemo(() => new Map(companies.map((company) => [company.id, company])), [companies]);
@@ -87,9 +86,10 @@ export default function WatchlistPage() {
 
     setMutating(true);
     setError('');
+    setNotice('');
 
     try {
-      const created = await postJson('/watchlists', {
+      const created = await apiPost('/watchlists', {
         name: newWatchlistName.trim(),
         description: newWatchlistDescription.trim() || null,
       });
@@ -98,6 +98,7 @@ export default function WatchlistPage() {
       setSelectedId(created.id);
       setNewWatchlistName('');
       setNewWatchlistDescription('');
+      setNotice(`Created watchlist "${created.name}".`);
     } catch (err) {
       setError(err.message);
     } finally {
@@ -112,13 +113,16 @@ export default function WatchlistPage() {
 
     setMutating(true);
     setError('');
+    setNotice('');
 
     try {
-      await postJson(`/watchlists/${selectedWatchlist.id}/items`, {
+      await apiPost(`/watchlists/${selectedWatchlist.id}/items`, {
         companyId,
         notes: notes || null,
       });
       await load();
+      const added = companies.find((company) => company.id === companyId);
+      setNotice(`Added ${added?.ticker || 'company'} to ${selectedWatchlist.name}.`);
     } catch (err) {
       setError(err.message);
     } finally {
@@ -133,12 +137,13 @@ export default function WatchlistPage() {
 
     setMutating(true);
     setError('');
+    setNotice('');
 
     try {
-      await apiFetch(`/watchlists/${selectedWatchlist.id}/items/${itemId}`, {
-        method: 'DELETE',
-      });
+      const removed = selectedWatchlist.items.find((item) => item.id === itemId);
+      await apiDelete(`/watchlists/${selectedWatchlist.id}/items/${itemId}`);
       await load();
+      setNotice(`Removed ${removed?.company?.ticker || 'item'} from ${selectedWatchlist.name}.`);
     } catch (err) {
       setError(err.message);
     } finally {
@@ -147,7 +152,7 @@ export default function WatchlistPage() {
   };
 
   if (loading) {
-    return <LoadingState message="Loading watchlists..." />;
+    return <LoadingState message="Loading watchlists..." details="Fetching saved watchlists, items, and company universe for quick add." />;
   }
 
   return (
@@ -164,6 +169,7 @@ export default function WatchlistPage() {
       </div>
 
       <Card title="Create Watchlist" subtitle="Build custom collections for monitoring.">
+        {notice && <p className="mb-4 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-700">{notice}</p>}
         <form className="flex flex-wrap items-end gap-3" onSubmit={handleCreateWatchlist}>
           <label className="min-w-[220px] flex-1 text-xs text-slate-600">
             Name
@@ -217,7 +223,7 @@ export default function WatchlistPage() {
           ) : null
         }
       >
-        {error && <ErrorState message={error} />}
+        {error && <ErrorState message={error} onAction={() => load(true).catch((err) => setError(err.message))} />}
         {!error && !selectedWatchlist && <EmptyState message="No watchlists found. Create one above." />}
         {!error && selectedWatchlist && (
           <WatchlistPanel

@@ -1,13 +1,7 @@
 import { Link } from 'react-router-dom';
 import DataTable from '../ui/DataTable';
 import ScoreBadge from '../ui/ScoreBadge';
-
-function formatDate(value) {
-  if (!value) {
-    return '—';
-  }
-  return new Date(value).toLocaleDateString();
-}
+import { formatDate } from '../../utils/format';
 
 export default function CompanyTable({ rows, sortKey, sortDirection, onSort }) {
   const columns = [

@@ -15,33 +15,32 @@ export default function DashboardPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
+  const loadDashboard = async () => {
+    setLoading(true);
+    setError('');
+    try {
+      const [companies, signals, relationships, scores] = await Promise.all([
+        apiFetch('/companies'),
+        apiFetch('/signals?limit=200'),
+        apiFetch('/relationships'),
+        apiFetch('/scores/top?limit=5'),
+      ]);
+
+      setData({
+        companies: Array.isArray(companies) ? companies : [],
+        signals: Array.isArray(signals) ? signals : [],
+        relationships: Array.isArray(relationships) ? relationships : [],
+        scores: Array.isArray(scores) ? scores : [],
+      });
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   useEffect(() => {
-    let active = true;
-
-    Promise.all([
-      apiFetch('/companies'),
-      apiFetch('/signals?limit=200'),
-      apiFetch('/relationships'),
-      apiFetch('/scores/top?limit=5'),
-    ])
-      .then(([companies, signals, relationships, scores]) => {
-        if (!active) {
-          return;
-        }
-
-        setData({
-          companies: Array.isArray(companies) ? companies : [],
-          signals: Array.isArray(signals) ? signals : [],
-          relationships: Array.isArray(relationships) ? relationships : [],
-          scores: Array.isArray(scores) ? scores : [],
-        });
-      })
-      .catch((err) => active && setError(err.message))
-      .finally(() => active && setLoading(false));
-
-    return () => {
-      active = false;
-    };
+    loadDashboard();
   }, []);
 
   const avgScore = useMemo(() => {
@@ -81,8 +80,8 @@ export default function DashboardPage() {
   return (
     <div className="space-y-6">
       <Card title="Dashboard" subtitle="Synthetic market intelligence overview. Not financial advice.">
-        {loading && <LoadingState message="Loading dashboard metrics..." />}
-        {!loading && error && <ErrorState message={error} />}
+        {loading && <LoadingState message="Loading dashboard metrics..." details="Aggregating companies, relationships, signals, and latest score snapshots." />}
+        {!loading && error && <ErrorState message={error} onAction={loadDashboard} />}
 
         {!loading && !error && (
           <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
@@ -96,8 +95,13 @@ export default function DashboardPage() {
 
       <Card title="Top Ranked Companies" subtitle="Latest score snapshots">
         {loading && <LoadingState message="Loading top score table..." />}
-        {!loading && error && <ErrorState message={error} />}
-        {!loading && !error && data.scores.length === 0 && <EmptyState message="No score snapshots are available." />}
+        {!loading && error && <ErrorState message={error} onAction={loadDashboard} />}
+        {!loading && !error && data.scores.length === 0 && (
+          <EmptyState
+            message="No score snapshots are available."
+            details="Run `npm --workspace backend run scores:recompute` after seeding to generate daily snapshots."
+          />
+        )}
         {!loading && !error && data.scores.length > 0 && <DataTable columns={topColumns} rows={data.scores} keyField="id" />}
       </Card>
     </div>

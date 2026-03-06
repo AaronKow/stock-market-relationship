@@ -46,4 +46,19 @@ export async function apiFetch(path, options = {}) {
   }
 }
 
+export function apiPost(path, body, options = {}) {
+  return apiFetch(path, {
+    method: 'POST',
+    body: JSON.stringify(body),
+    ...options,
+  });
+}
+
+export function apiDelete(path, options = {}) {
+  return apiFetch(path, {
+    method: 'DELETE',
+    ...options,
+  });
+}
+
 export { API_BASE_URL };
