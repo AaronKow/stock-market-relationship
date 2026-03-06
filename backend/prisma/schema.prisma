@@ -154,6 +154,7 @@ model CompanyScoreSnapshot {
   earningsScore     Float?
   totalScore        Float
   scoreBreakdown    Json?
+  explanationJson   Json?
   createdAt         DateTime @default(now())
   company           Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
 

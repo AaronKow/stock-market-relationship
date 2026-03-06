@@ -1,5 +1,6 @@
 const cron = require('node-cron');
 const logger = require('../utils/logger');
+const { recalculateAllCompanyScores } = require('../services/scoringEngine');
 
 function createJob(name, schedule, task) {
   return cron.schedule(schedule, async () => {
@@ -32,6 +33,10 @@ function startScheduler() {
     }),
     createJob('ingest-signals', '0 * * * *', async () => {
       logger.info('Stub signals ingestion executed');
+    }),
+    createJob('recalculate-company-scores', '*/15 * * * *', async () => {
+      const snapshots = await recalculateAllCompanyScores();
+      logger.info('Company score recalculation executed', { snapshots: snapshots.length });
     }),
   ];
 
