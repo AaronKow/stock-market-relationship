@@ -98,8 +98,57 @@ async function removeWatchlistItem({ watchlistId, itemId }) {
   return item;
 }
 
+async function listWatchlists({ userId = null } = {}) {
+  const where = {};
+  if (userId) {
+    where.userId = userId;
+  } else {
+    const firstUser = await prisma.user.findFirst({
+      orderBy: { createdAt: 'asc' },
+      select: { id: true },
+    });
+    if (!firstUser) {
+      return [];
+    }
+    where.userId = firstUser.id;
+  }
+
+  return prisma.watchlist.findMany({
+    where,
+    include: {
+      items: {
+        include: {
+          company: {
+            select: { id: true, ticker: true, name: true, sector: true },
+          },
+        },
+        orderBy: { addedAt: 'desc' },
+      },
+    },
+    orderBy: [{ isDefault: 'desc' }, { createdAt: 'asc' }],
+  });
+}
+
+async function getWatchlistById({ id }) {
+  return prisma.watchlist.findUnique({
+    where: { id },
+    include: {
+      items: {
+        include: {
+          company: {
+            select: { id: true, ticker: true, name: true, sector: true },
+          },
+        },
+        orderBy: { addedAt: 'desc' },
+      },
+    },
+  });
+}
+
 module.exports = {
   createWatchlist,
   addWatchlistItem,
   removeWatchlistItem,
+  listWatchlists,
+  getWatchlistById,
 };

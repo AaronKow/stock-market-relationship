@@ -15,7 +15,13 @@ const { getUpcomingEarnings } = require('../services/earningsService');
 const { listSignals } = require('../services/signalsService');
 const { listRelationships } = require('../services/relationshipsService');
 const { parseBooleanFlag, listTopScores } = require('../services/scoresService');
-const { createWatchlist, addWatchlistItem, removeWatchlistItem } = require('../services/watchlistsService');
+const {
+  createWatchlist,
+  addWatchlistItem,
+  removeWatchlistItem,
+  listWatchlists,
+  getWatchlistById,
+} = require('../services/watchlistsService');
 
 const router = express.Router();
 
@@ -155,6 +161,29 @@ router.post(
     }
   },
 );
+
+router.get('/watchlists', async (req, res, next) => {
+  try {
+    const data = await listWatchlists({
+      userId: req.query.userId ?? null,
+    });
+    return res.json({ data });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+router.get('/watchlists/:id', validate(requireUuidParam('id')), async (req, res, next) => {
+  try {
+    const data = await getWatchlistById({ id: req.params.id });
+    if (!data) {
+      return next(new AppError('Watchlist not found', 404));
+    }
+    return res.json({ data });
+  } catch (error) {
+    return next(error);
+  }
+});
 
 router.post(
   '/watchlists/:id/items',

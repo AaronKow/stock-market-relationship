@@ -19,6 +19,10 @@ async function parseResponse(response) {
     throw new ApiError(message, response.status, payload);
   }
 
+  if (isJson && payload && typeof payload === 'object' && Object.hasOwn(payload, 'data')) {
+    return payload.data;
+  }
+
   return payload;
 }
 
