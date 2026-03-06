@@ -41,6 +41,19 @@ Each workspace has independent scripts for local development and deployment envi
 - `npm --workspace backend run dev`
 - `npm --workspace backend run build`
 - `npm --workspace backend run start`
+- `npm --workspace backend run db:seed`
+
+### Database setup and synthetic seeding
+
+The backend uses Prisma with PostgreSQL. To initialize and seed local data:
+
+```bash
+npm --workspace backend run prisma:generate
+npm --workspace backend run prisma:migrate:dev
+npm run db:seed
+```
+
+Seed output is intentionally synthetic and exists only for development/demo workflows. It is fictional and **not investment advice**.
 
 ### shared
 
