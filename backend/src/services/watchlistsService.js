@@ -13,11 +13,20 @@ async function resolveUserId(explicitUserId) {
   }
 
   const firstUser = await prisma.user.findFirst({ orderBy: { createdAt: 'asc' }, select: { id: true } });
-  if (!firstUser) {
-    throw new AppError('No users available. Seed data first or provide a valid userId.', 400);
+  if (firstUser) {
+    return firstUser.id;
   }
 
-  return firstUser.id;
+  // Local/dev bootstrap path so watchlist UI works without requiring seed data.
+  const bootstrapUser = await prisma.user.create({
+    data: {
+      email: process.env.DEFAULT_WATCHLIST_USER_EMAIL || 'local.watchlist@stock-relationship.local',
+      name: process.env.DEFAULT_WATCHLIST_USER_NAME || 'Local Watchlist User',
+    },
+    select: { id: true },
+  });
+
+  return bootstrapUser.id;
 }
 
 async function createWatchlist({ name, description = null, userId = null, isDefault = false }) {
