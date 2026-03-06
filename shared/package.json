@@ -1,0 +1,10 @@
+{
+  "name": "@stock-market-relationship/shared",
+  "private": true,
+  "version": "0.1.0",
+  "scripts": {
+    "dev": "echo 'shared package does not run a standalone dev server'",
+    "build": "echo 'shared build step not yet scaffolded'",
+    "start": "echo 'shared package is not a standalone runtime service'"
+  }
+}
