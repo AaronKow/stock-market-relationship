@@ -1,14 +1,14 @@
 #!/usr/bin/env node
 
-const { runSignalsIngestionJob } = require('../../backend/src/ingestion/jobs/signalsIngestionJob');
+const { runCompanyMetadataIngestionJob } = require('../../backend/src/ingestion/jobs/companyMetadataIngestionJob');
 
 async function run() {
   const startedAt = new Date().toISOString();
-  const summary = await runSignalsIngestionJob();
+  const summary = await runCompanyMetadataIngestionJob();
 
   console.log(
     JSON.stringify({
-      job: process.env.INGESTION_JOB_NAME || 'ingest-signals',
+      job: process.env.INGESTION_JOB_NAME || 'ingest-company-metadata',
       startedAt,
       status: 'completed',
       providers: summary,

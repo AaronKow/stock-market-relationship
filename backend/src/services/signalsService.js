@@ -1,9 +1,13 @@
 const { prisma } = require('./prisma');
 
 async function listSignals({ companyId = null, limit = 100 } = {}) {
+  const now = new Date();
+
   return prisma.signalEvent.findMany({
     where: {
       ...(companyId ? { companyId } : {}),
+      occurredAt: { lte: now },
+      AND: [{ OR: [{ sourceAvailableAt: null }, { sourceAvailableAt: { lte: now } }] }],
     },
     include: {
       company: {

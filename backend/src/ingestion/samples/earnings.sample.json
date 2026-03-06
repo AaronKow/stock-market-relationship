@@ -1,0 +1,30 @@
+[
+  {
+    "id": "earn-aapl-q2-2026",
+    "ticker": "AAPL",
+    "companyName": "Apple Inc.",
+    "eventDate": "2026-04-30T20:30:00Z",
+    "sessionType": "POST_MARKET",
+    "fiscalQuarter": 2,
+    "fiscalYear": 2026,
+    "estimatedEps": 1.62,
+    "estimatedRevenue": 94100000000,
+    "sourceUrl": "https://example.invalid/earnings/aapl/q2-2026",
+    "sourcePublishedAt": "2026-03-01T12:00:00Z",
+    "sourceAvailableAt": "2026-03-01T12:00:00Z"
+  },
+  {
+    "id": "earn-msft-q3-2026",
+    "ticker": "MSFT",
+    "companyName": "Microsoft Corporation",
+    "eventDate": "2026-04-23T20:05:00Z",
+    "sessionType": "POST_MARKET",
+    "fiscalQuarter": 3,
+    "fiscalYear": 2026,
+    "estimatedEps": 2.99,
+    "estimatedRevenue": 67750000000,
+    "sourceUrl": "https://example.invalid/earnings/msft/q3-2026",
+    "sourcePublishedAt": "2026-03-01T12:05:00Z",
+    "sourceAvailableAt": "2026-03-01T12:05:00Z"
+  }
+]

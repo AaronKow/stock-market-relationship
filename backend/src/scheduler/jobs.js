@@ -50,6 +50,11 @@ function startScheduler() {
       scriptFile: 'earningsIngestion.js',
     }),
     createScriptBackedJob({
+      name: 'ingest-company-metadata',
+      schedule: process.env.CRON_INGEST_COMPANY_METADATA || '15 */6 * * *',
+      scriptFile: 'companyMetadataIngestion.js',
+    }),
+    createScriptBackedJob({
       name: 'ingest-relationships',
       schedule: process.env.CRON_INGEST_RELATIONSHIPS || '*/45 * * * *',
       scriptFile: 'relationshipsIngestion.js',

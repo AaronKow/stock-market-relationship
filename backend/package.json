@@ -15,6 +15,7 @@
     "db:seed": "prisma db seed --schema prisma/schema.prisma",
     "scores:recompute": "node src/scripts/recomputeScoreSnapshots.js",
     "ingest:earnings": "node ../scripts/ingestion/earningsIngestion.js",
+    "ingest:company-metadata": "node ../scripts/ingestion/companyMetadataIngestion.js",
     "ingest:relationships": "node ../scripts/ingestion/relationshipsIngestion.js",
     "ingest:signals": "node ../scripts/ingestion/signalsIngestion.js",
     "render:postdeploy": "node scripts/render-postdeploy.js"

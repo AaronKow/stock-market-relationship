@@ -148,12 +148,34 @@ function buildExplanation({
 
 function computeCompanyScore(company, asOfDate = new Date()) {
   const earningsEvent = company.earningsEvents
-    .filter((event) => event.eventDate >= asOfDate)
+    .filter((event) => {
+      if (event.eventDate < asOfDate) {
+        return false;
+      }
+
+      if (!event.sourceAvailableAt) {
+        return true;
+      }
+
+      return event.sourceAvailableAt <= asOfDate;
+    })
     .sort((a, b) => a.eventDate - b.eventDate)[0];
 
   const earningsTiming = computeEarningsTimingBoost(earningsEvent?.eventDate, asOfDate);
 
-  const aggregate = company.signalEvents.reduce(
+  const usableSignalEvents = company.signalEvents.filter((signalEvent) => {
+    if (signalEvent.occurredAt > asOfDate) {
+      return false;
+    }
+
+    if (!signalEvent.sourceAvailableAt) {
+      return true;
+    }
+
+    return signalEvent.sourceAvailableAt <= asOfDate;
+  });
+
+  const aggregate = usableSignalEvents.reduce(
     (accumulator, signalEvent) => {
       const contribution = computeSignalContribution(signalEvent, asOfDate);
       accumulator.signal += contribution.signalContribution;
@@ -163,7 +185,7 @@ function computeCompanyScore(company, asOfDate = new Date()) {
     { signal: 0, relationship: 0 },
   );
 
-  const riskPenalty = computeRiskPenalty(company.signalEvents, asOfDate);
+  const riskPenalty = computeRiskPenalty(usableSignalEvents, asOfDate);
   const revisions = {
     enabled: false,
     score: 0,

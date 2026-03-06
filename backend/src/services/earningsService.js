@@ -6,6 +6,11 @@ async function getUpcomingEarnings({ windowDays = 30 } = {}) {
 
   return prisma.earningsEvent.findMany({
     where: {
+      AND: [
+        {
+          OR: [{ sourceAvailableAt: null }, { sourceAvailableAt: { lte: now } }],
+        },
+      ],
       eventDate: {
         gte: now,
         lte: end,

@@ -42,6 +42,8 @@ enum IngestionStatus {
   STARTED
   SUCCEEDED
   FAILED
+  PARTIAL
+  SKIPPED
 }
 
 model User {
@@ -62,6 +64,18 @@ model Company {
   industry            String?
   exchange            String?
   country             String?
+  cik                 String?                @unique
+  sicCode             String?
+  sicDescription      String?
+  fiscalYearEnd       String?
+  latestFilingAt      DateTime?
+  metadataSource      String?
+  metadataSourceUrl   String?
+  metadataPublishedAt DateTime?
+  metadataAvailableAt DateTime?
+  metadataIngestedAt  DateTime?
+  metadataRawPayloadId String?
+  ingestionMetadata   Json?
   createdAt           DateTime               @default(now())
   updatedAt           DateTime               @updatedAt
   earningsEvents      EarningsEvent[]
@@ -73,11 +87,21 @@ model Company {
 
   @@index([name])
   @@index([sector, industry])
+  @@index([cik])
 }
 
 model EarningsEvent {
   id               String        @id @default(uuid())
   companyId        String
+  externalId       String?
+  sourceProvider   String?
+  sourceName       String?
+  sourceUrl        String?
+  sourcePublishedAt DateTime?
+  sourceAvailableAt DateTime?
+  ingestedAt       DateTime?
+  rawPayloadId     String?
+  dedupeKey        String?       @unique
   eventDate        DateTime
   sessionType      SessionType
   fiscalQuarter    Int?
@@ -95,12 +119,22 @@ model EarningsEvent {
   @@unique([companyId, fiscalYear, fiscalQuarter])
   @@index([companyId, eventDate])
   @@index([eventDate])
+  @@index([sourceAvailableAt])
 }
 
 model Relationship {
   id               String           @id @default(uuid())
   sourceCompanyId  String
   targetCompanyId  String
+  externalId       String?
+  sourceProvider   String?
+  sourceName       String?
+  sourceUrl        String?
+  sourcePublishedAt DateTime?
+  sourceAvailableAt DateTime?
+  ingestedAt       DateTime?
+  rawPayloadId     String?
+  dedupeKey        String?          @unique
   relationshipType RelationshipType
   strength         Float?
   confidence       Float?
@@ -123,6 +157,13 @@ model SignalEvent {
   companyId       String
   relationshipId  String?
   earningsEventId String?
+  externalId      String?
+  sourceProvider  String?
+  sourcePublishedAt DateTime?
+  sourceAvailableAt DateTime?
+  ingestedAt      DateTime?
+  rawPayloadId    String?
+  dedupeKey       String?        @unique
   signalType      SignalType
   sentiment       Sentiment
   occurredAt      DateTime
@@ -193,18 +234,63 @@ model WatchlistItem {
 
 model IngestionLog {
   id               String          @id @default(uuid())
+  jobName          String?
   source           String
+  provider         String?
   entityType       String
   status           IngestionStatus
-  startedAt        DateTime
+  runKey           String?
+  attempt          Int             @default(1)
+  startedAt        DateTime        @default(now())
   finishedAt       DateTime?
   recordsProcessed Int             @default(0)
   recordsFailed    Int             @default(0)
+  rawPayloadCount  Int             @default(0)
+  rateLimitRemaining Int?
+  rateLimitResetAt DateTime?
   checksum         String?
   errorMessage     String?
   metadata         Json?
   createdAt        DateTime        @default(now())
+  rawPayloads      RawIngestionPayload[]
 
   @@index([source, entityType, startedAt])
   @@index([status, startedAt])
+  @@index([jobName, provider, startedAt])
+  @@unique([runKey, attempt])
+}
+
+model RawIngestionPayload {
+  id             String       @id @default(uuid())
+  ingestionLogId String?
+  source         String
+  provider       String?
+  entityType     String
+  externalId     String?
+  requestUrl     String?
+  httpStatus     Int?
+  contentType    String?
+  payloadHash    String?
+  fetchedAt      DateTime     @default(now())
+  publishedAt    DateTime?
+  availableAt    DateTime?
+  payload        Json
+  createdAt      DateTime     @default(now())
+  ingestionLog   IngestionLog? @relation(fields: [ingestionLogId], references: [id], onDelete: SetNull)
+
+  @@index([source, entityType, fetchedAt])
+  @@index([provider, entityType, externalId])
+  @@index([payloadHash])
+}
+
+model IngestionCheckpoint {
+  id         String   @id @default(uuid())
+  provider   String
+  entityType String
+  cursor     Json?
+  updatedAt  DateTime @updatedAt
+  createdAt  DateTime @default(now())
+
+  @@unique([provider, entityType])
+  @@index([entityType, updatedAt])
 }

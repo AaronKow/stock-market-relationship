@@ -1,6 +1,8 @@
 const { prisma } = require('./prisma');
 
 async function listRelationships({ companyId = null } = {}) {
+  const now = new Date();
+
   return prisma.relationship.findMany({
     where: {
       ...(companyId
@@ -8,6 +10,7 @@ async function listRelationships({ companyId = null } = {}) {
             OR: [{ sourceCompanyId: companyId }, { targetCompanyId: companyId }],
           }
         : {}),
+      AND: [{ OR: [{ sourceAvailableAt: null }, { sourceAvailableAt: { lte: now } }] }],
     },
     include: {
       sourceCompany: {

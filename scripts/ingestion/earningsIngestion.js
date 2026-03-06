@@ -1,15 +1,17 @@
 #!/usr/bin/env node
 
+const { runEarningsIngestionJob } = require('../../backend/src/ingestion/jobs/earningsIngestionJob');
+
 async function run() {
   const startedAt = new Date().toISOString();
+  const summary = await runEarningsIngestionJob();
 
   console.log(
     JSON.stringify({
       job: process.env.INGESTION_JOB_NAME || 'ingest-earnings',
-      status: 'placeholder',
       startedAt,
-      message: 'Earnings ingestion scaffold executed. Replace with provider fetch + upsert pipeline.',
-      nextSteps: ['Fetch upcoming and reported earnings', 'Normalize fiscal period fields', 'Upsert EarningsEvent rows'],
+      status: 'completed',
+      providers: summary,
     }),
   );
 }

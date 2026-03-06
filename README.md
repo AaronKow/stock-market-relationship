@@ -16,7 +16,7 @@ Runtime flow:
 
 1. Frontend calls backend REST APIs under `/api`.
 2. Backend services query Prisma models and return normalized response payloads (`{ data: ... }`).
-3. Scheduler runs score recomputation and script-backed ingestion placeholders on cron schedules.
+3. Scheduler runs score recomputation and script-backed ingestion pipelines on cron schedules.
 
 ## Data model overview
 
@@ -30,7 +30,9 @@ Core entities:
 - `SignalEvent`: timestamped events with `signalType`, `sentiment`, and confidence; optionally tied to relationships/earnings.
 - `CompanyScoreSnapshot`: daily score output per company.
 - `Watchlist` + `WatchlistItem`: user-defined tracking collections.
-- `IngestionLog`: ingestion run auditing (status, counts, errors).
+- `IngestionLog`: ingestion run auditing (status, counts, errors, rate-limit metadata, raw payload counts).
+- `RawIngestionPayload`: persisted provider payload snapshots for debugging and replay.
+- `IngestionCheckpoint`: provider/entity cursors for incremental ingestion.
 
 ## Local setup
 
@@ -63,8 +65,19 @@ Required backend env values (`backend/.env`):
 - Optional: `ENABLE_SCHEDULER` (`true` by default)
 - Optional cron overrides:
   - `CRON_INGEST_EARNINGS`
+  - `CRON_INGEST_COMPANY_METADATA`
   - `CRON_INGEST_RELATIONSHIPS`
   - `CRON_INGEST_SIGNALS`
+  - Optional provider/configuration variables:
+    - `INGESTION_MAX_RETRIES`
+    - `INGESTION_MAX_PAGES`
+    - `EARNINGS_JSON_PATH`
+    - `COMPANY_METADATA_JSON_PATH`
+    - `RELATIONSHIPS_JSON_PATH`
+    - `SIGNALS_JSON_PATH`
+    - `FMP_API_KEY` (paid, optional)
+    - `PREMIUM_NEWS_API_KEY` (paid, optional)
+    - `SEC_API_USER_AGENT` (for SEC provider enablement)
 
 Required frontend env values (`frontend/.env`):
 
@@ -112,30 +125,46 @@ Build all workspaces:
 npm run build
 ```
 
-## Ingestion scaffolding and cron jobs
+## Ingestion architecture and cron jobs
 
 Scheduler entrypoint: [`backend/src/scheduler/jobs.js`](backend/src/scheduler/jobs.js)
 
 Current cron jobs:
 
 - `ingest-earnings`
+- `ingest-company-metadata`
 - `ingest-relationships`
 - `ingest-signals`
 - `recalculate-company-scores`
 
-The three ingestion jobs call script placeholders in `scripts/ingestion/`:
+Ingestion jobs call executable scripts in `scripts/ingestion/`:
 
 - `scripts/ingestion/earningsIngestion.js`
+- `scripts/ingestion/companyMetadataIngestion.js`
 - `scripts/ingestion/relationshipsIngestion.js`
 - `scripts/ingestion/signalsIngestion.js`
 
-Run placeholders manually:
+Ingestion runtime components are under `backend/src/ingestion/`:
+
+- `core/`: provider contract, retry helper, rate-limit handler, checkpoints, raw payload persistence, job runner.
+- `providers/`: source-specific adapters (JSON example providers, env-gated paid stubs).
+- `adapters/`: domain upsert logic isolated from provider payload shapes.
+- `jobs/`: entity-level job definitions that compose providers + adapters.
+
+Run ingestion manually:
 
 ```bash
 npm run ingest:earnings
+npm run ingest:company-metadata
 npm run ingest:relationships
 npm run ingest:signals
 ```
+
+Point-in-time safeguards:
+
+- Every ingested record can store `sourcePublishedAt` and `sourceAvailableAt`.
+- Scoring/API reads filter out records that were not available as-of query time.
+- Upsert dedupe keys (`dedupeKey`) make retries idempotent and avoid duplicate rows.
 
 ## Scoring explanation
 
@@ -169,10 +198,8 @@ Each snapshot also stores `explanationJson` so UI can show a transparent compone
 
 ## Future improvements
 
-- Replace placeholder ingestion scripts with real provider adapters and upsert pipelines.
-- Persist scheduler runs into `IngestionLog` for dashboard observability.
-- Add deduplication/idempotency keys for ingestion safety.
-- Add alerting for ingestion failures and score anomalies.
+- Implement fully authenticated paid provider integrations behind existing env gates.
+- Add alerting for repeated ingestion failures and score anomalies.
 - Introduce authentication and per-user watchlist authorization.
 - Add historical backtesting and score calibration tooling.
-- Add integration tests for API routes + scheduler contract tests.
+- Add integration tests for ingestion adapters + scheduler contract tests.

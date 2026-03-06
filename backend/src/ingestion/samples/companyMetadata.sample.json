@@ -1,0 +1,28 @@
+[
+  {
+    "externalId": "sec-aapl",
+    "ticker": "AAPL",
+    "companyName": "Apple Inc.",
+    "cik": "0000320193",
+    "sicCode": "3571",
+    "sicDescription": "Electronic Computers",
+    "fiscalYearEnd": "0927",
+    "latestFilingAt": "2026-02-01T21:00:00Z",
+    "sourceUrl": "https://www.sec.gov/ixviewer/ix.html",
+    "sourcePublishedAt": "2026-02-01T21:00:00Z",
+    "sourceAvailableAt": "2026-02-01T21:05:00Z"
+  },
+  {
+    "externalId": "sec-msft",
+    "ticker": "MSFT",
+    "companyName": "Microsoft Corporation",
+    "cik": "0000789019",
+    "sicCode": "7372",
+    "sicDescription": "Prepackaged Software",
+    "fiscalYearEnd": "0630",
+    "latestFilingAt": "2026-01-30T20:30:00Z",
+    "sourceUrl": "https://www.sec.gov/ixviewer/ix.html",
+    "sourcePublishedAt": "2026-01-30T20:30:00Z",
+    "sourceAvailableAt": "2026-01-30T20:35:00Z"
+  }
+]

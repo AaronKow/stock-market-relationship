@@ -1,0 +1,30 @@
+[
+  {
+    "id": "rel-aapl-tsm-supplier",
+    "sourceTicker": "AAPL",
+    "sourceCompanyName": "Apple Inc.",
+    "targetTicker": "TSM",
+    "targetCompanyName": "Taiwan Semiconductor Manufacturing",
+    "relationshipType": "SUPPLIER",
+    "strength": 0.88,
+    "confidence": 0.76,
+    "rationale": "Fabrication dependency for advanced-node chips.",
+    "sourceUrl": "https://example.invalid/relationships/aapl-tsm",
+    "sourcePublishedAt": "2026-02-20T11:00:00Z",
+    "sourceAvailableAt": "2026-02-20T11:15:00Z"
+  },
+  {
+    "id": "rel-msft-nvda-partner",
+    "sourceTicker": "MSFT",
+    "sourceCompanyName": "Microsoft Corporation",
+    "targetTicker": "NVDA",
+    "targetCompanyName": "NVIDIA Corporation",
+    "relationshipType": "PARTNER",
+    "strength": 0.64,
+    "confidence": 0.71,
+    "rationale": "Cloud AI infrastructure and accelerator deployment partnership.",
+    "sourceUrl": "https://example.invalid/relationships/msft-nvda",
+    "sourcePublishedAt": "2026-02-21T09:30:00Z",
+    "sourceAvailableAt": "2026-02-21T09:45:00Z"
+  }
+]

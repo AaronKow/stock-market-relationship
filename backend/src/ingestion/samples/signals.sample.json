@@ -1,0 +1,37 @@
+[
+  {
+    "id": "sig-aapl-transcript-20260301",
+    "ticker": "AAPL",
+    "companyName": "Apple Inc.",
+    "signalType": "ANALYST",
+    "sentiment": "POSITIVE",
+    "occurredAt": "2026-03-01T18:00:00Z",
+    "headline": "Analyst note highlights stronger services margin trend",
+    "description": "Manual analyst transcript notes indicate upside to consensus margin assumptions.",
+    "sourceUrl": "https://example.invalid/signals/aapl/20260301",
+    "sourcePublishedAt": "2026-03-01T18:10:00Z",
+    "sourceAvailableAt": "2026-03-01T18:10:00Z",
+    "confidence": 0.74,
+    "metadata": {
+      "channel": "manual-analyst-notes",
+      "noteId": "N-1001"
+    }
+  },
+  {
+    "id": "sig-msft-news-20260302",
+    "ticker": "MSFT",
+    "companyName": "Microsoft Corporation",
+    "signalType": "NEWS",
+    "sentiment": "NEUTRAL",
+    "occurredAt": "2026-03-02T14:20:00Z",
+    "headline": "New enterprise contract announced",
+    "description": "Company disclosed a large enterprise cloud agreement with phased deployment.",
+    "sourceUrl": "https://example.invalid/signals/msft/20260302",
+    "sourcePublishedAt": "2026-03-02T14:22:00Z",
+    "sourceAvailableAt": "2026-03-02T14:25:00Z",
+    "confidence": 0.58,
+    "metadata": {
+      "channel": "news"
+    }
+  }
+]
