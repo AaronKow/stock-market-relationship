@@ -9,8 +9,10 @@
     "build": "echo 'No build step required for backend'",
     "prisma:generate": "prisma generate --schema prisma/schema.prisma",
     "prisma:migrate:dev": "prisma migrate dev --schema prisma/schema.prisma",
+    "prisma:migrate:deploy": "prisma migrate deploy --schema prisma/schema.prisma",
     "db:seed": "prisma db seed --schema prisma/schema.prisma",
-    "scores:recompute": "node src/scripts/recomputeScoreSnapshots.js"
+    "scores:recompute": "node src/scripts/recomputeScoreSnapshots.js",
+    "render:postdeploy": "node scripts/render-postdeploy.js"
   },
   "dependencies": {
     "@prisma/client": "^6.16.3",

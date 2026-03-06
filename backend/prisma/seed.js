@@ -8,19 +8,7 @@ const prisma = new PrismaClient();
  * It must not be interpreted as investment advice.
  */
 async function main() {
-  console.log('Seeding synthetic stock relationship dataset (NOT investment advice)...');
-
-  await prisma.$transaction([
-    prisma.companyScoreSnapshot.deleteMany(),
-    prisma.signalEvent.deleteMany(),
-    prisma.earningsEvent.deleteMany(),
-    prisma.relationship.deleteMany(),
-    prisma.watchlistItem.deleteMany(),
-    prisma.watchlist.deleteMany(),
-    prisma.company.deleteMany(),
-    prisma.user.deleteMany(),
-    prisma.ingestionLog.deleteMany(),
-  ]);
+  console.log('Seeding synthetic stock relationship dataset (idempotent mode, NOT investment advice)...');
 
   const companiesData = [
     { ticker: 'AURX', name: 'Aurora Robotics Exchange', sector: 'Technology', industry: 'Industrial Automation', exchange: 'SYNX', country: 'US' },
@@ -40,13 +28,30 @@ async function main() {
     { ticker: 'PIVT', name: 'Pivot Health Devices', sector: 'Health Care', industry: 'Medical Devices', exchange: 'SYNX', country: 'US' },
   ];
 
-  await prisma.company.createMany({ data: companiesData });
+  for (const company of companiesData) {
+    await prisma.company.upsert({
+      where: { ticker: company.ticker },
+      create: company,
+      update: {
+        name: company.name,
+        sector: company.sector,
+        industry: company.industry,
+        exchange: company.exchange,
+        country: company.country,
+      },
+    });
+  }
+
   const companies = await prisma.company.findMany();
   const companyByTicker = Object.fromEntries(companies.map((company) => [company.ticker, company]));
 
-  const seedUser = await prisma.user.create({
-    data: {
+  const seedUser = await prisma.user.upsert({
+    where: { email: 'demo.synthetic@stock-relationship.local' },
+    create: {
       email: 'demo.synthetic@stock-relationship.local',
+      name: 'Synthetic Demo User',
+    },
+    update: {
       name: 'Synthetic Demo User',
     },
   });
@@ -80,28 +85,37 @@ async function main() {
     ['PIVT', 'HLIO', RelationshipType.CUSTOMER, 0.43, 0.61, 'Hospitals source renewable backup power via HLIO.'],
   ];
 
-  const relationshipCreates = relationshipsData.map(([sourceTicker, targetTicker, relationshipType, strength, confidence, rationale]) =>
-    prisma.relationship.create({
-      data: {
-        sourceCompanyId: companyByTicker[sourceTicker].id,
-        targetCompanyId: companyByTicker[targetTicker].id,
+  for (const [sourceTicker, targetTicker, relationshipType, strength, confidence, rationale] of relationshipsData) {
+    const sourceCompanyId = companyByTicker[sourceTicker].id;
+    const targetCompanyId = companyByTicker[targetTicker].id;
+
+    await prisma.relationship.upsert({
+      where: {
+        sourceCompanyId_targetCompanyId_relationshipType: {
+          sourceCompanyId,
+          targetCompanyId,
+          relationshipType,
+        },
+      },
+      create: {
+        sourceCompanyId,
+        targetCompanyId,
         relationshipType,
         strength,
         confidence,
         rationale,
         createdByUserId: seedUser.id,
       },
-    }),
-  );
-  await prisma.$transaction(relationshipCreates);
+      update: {
+        strength,
+        confidence,
+        rationale,
+        createdByUserId: seedUser.id,
+      },
+    });
+  }
 
   const relationships = await prisma.relationship.findMany();
-  const relationshipByKey = Object.fromEntries(
-    relationships.map((relationship) => [
-      `${relationship.sourceCompanyId}:${relationship.targetCompanyId}:${relationship.relationshipType}`,
-      relationship,
-    ]),
-  );
 
   const earningsData = [
     ['AURX', '2025-02-05T21:00:00Z', SessionType.POST_MARKET, 4, 2024, 1.12, 1.18, 1200000000, 1245000000, 'Synthetic quarter with modest upside surprise.'],
@@ -116,24 +130,40 @@ async function main() {
     ['BOLT', '2025-02-14T11:45:00Z', SessionType.PRE_MARKET, 4, 2024, 0.21, 0.24, 560000000, 579000000, 'Synthetic EV platform design-win momentum.'],
   ];
 
-  const earningsCreates = earningsData.map(
-    ([ticker, eventDate, sessionType, fiscalQuarter, fiscalYear, estimatedEps, actualEps, estimatedRevenue, actualRevenue, notes]) =>
-      prisma.earningsEvent.create({
-        data: {
-          companyId: companyByTicker[ticker].id,
-          eventDate: new Date(eventDate),
-          sessionType,
-          fiscalQuarter,
+  for (const [ticker, eventDate, sessionType, fiscalQuarter, fiscalYear, estimatedEps, actualEps, estimatedRevenue, actualRevenue, notes] of earningsData) {
+    const companyId = companyByTicker[ticker].id;
+
+    await prisma.earningsEvent.upsert({
+      where: {
+        companyId_fiscalYear_fiscalQuarter: {
+          companyId,
           fiscalYear,
-          estimatedEps,
-          actualEps,
-          estimatedRevenue,
-          actualRevenue,
-          notes,
+          fiscalQuarter,
         },
-      }),
-  );
-  await prisma.$transaction(earningsCreates);
+      },
+      create: {
+        companyId,
+        eventDate: new Date(eventDate),
+        sessionType,
+        fiscalQuarter,
+        fiscalYear,
+        estimatedEps,
+        actualEps,
+        estimatedRevenue,
+        actualRevenue,
+        notes,
+      },
+      update: {
+        eventDate: new Date(eventDate),
+        sessionType,
+        estimatedEps,
+        actualEps,
+        estimatedRevenue,
+        actualRevenue,
+        notes,
+      },
+    });
+  }
 
   const earningsEvents = await prisma.earningsEvent.findMany();
   const earningsByCompanyId = Object.fromEntries(earningsEvents.map((event) => [event.companyId, event]));
@@ -171,75 +201,131 @@ async function main() {
     ['BOLT', SignalType.EARNINGS, Sentiment.POSITIVE],
   ];
 
-  const signalCreates = signalSeed.map(([ticker, signalType, sentiment], index) => {
+  for (const [index, [ticker, signalType, sentiment]] of signalSeed.entries()) {
     const company = companyByTicker[ticker];
     const occurredAt = new Date(Date.UTC(2025, 1, 1 + index, 14, (index * 7) % 60));
     const relatedRelationship = relationships[index % relationships.length];
     const earningsEvent = signalType === SignalType.EARNINGS ? earningsByCompanyId[company.id] : null;
+    const sourceUrl = `https://example.invalid/synthetic-signal/${ticker.toLowerCase()}/${index + 1}`;
 
-    return prisma.signalEvent.create({
-      data: {
-        companyId: company.id,
-        relationshipId: relatedRelationship?.id,
-        earningsEventId: earningsEvent?.id,
-        signalType,
-        sentiment,
-        occurredAt,
-        headline: `${ticker} synthetic ${signalType.toLowerCase().replace('_', ' ')} signal #${index + 1}`,
-        description: 'Generated demo signal for local development. Not investment advice.',
-        source: 'Synthetic Feed Generator',
-        sourceUrl: `https://example.invalid/synthetic-signal/${ticker.toLowerCase()}/${index + 1}`,
-        confidence: 0.45 + (index % 5) * 0.1,
-        metadata: {
-          synthetic: true,
-          runLabel: 'demo-seed-v1',
-          ordinal: index + 1,
-        },
-      },
+    const existingSignal = await prisma.signalEvent.findFirst({
+      where: { sourceUrl },
+      select: { id: true },
     });
-  });
-  await prisma.$transaction(signalCreates);
 
-  const watchlists = await prisma.$transaction([
-    prisma.watchlist.create({
-      data: {
+    if (existingSignal) {
+      await prisma.signalEvent.update({
+        where: { id: existingSignal.id },
+        data: {
+          companyId: company.id,
+          relationshipId: relatedRelationship?.id,
+          earningsEventId: earningsEvent?.id,
+          signalType,
+          sentiment,
+          occurredAt,
+          headline: `${ticker} synthetic ${signalType.toLowerCase().replace('_', ' ')} signal #${index + 1}`,
+          description: 'Generated demo signal for local development. Not investment advice.',
+          source: 'Synthetic Feed Generator',
+          confidence: 0.45 + (index % 5) * 0.1,
+          metadata: {
+            synthetic: true,
+            runLabel: 'demo-seed-v1',
+            ordinal: index + 1,
+          },
+        },
+      });
+    } else {
+      await prisma.signalEvent.create({
+        data: {
+          companyId: company.id,
+          relationshipId: relatedRelationship?.id,
+          earningsEventId: earningsEvent?.id,
+          signalType,
+          sentiment,
+          occurredAt,
+          headline: `${ticker} synthetic ${signalType.toLowerCase().replace('_', ' ')} signal #${index + 1}`,
+          description: 'Generated demo signal for local development. Not investment advice.',
+          source: 'Synthetic Feed Generator',
+          sourceUrl,
+          confidence: 0.45 + (index % 5) * 0.1,
+          metadata: {
+            synthetic: true,
+            runLabel: 'demo-seed-v1',
+            ordinal: index + 1,
+          },
+        },
+      });
+    }
+  }
+
+  const watchlistA = await prisma.watchlist.upsert({
+    where: {
+      userId_name: {
         userId: seedUser.id,
         name: 'Synthetic High Conviction',
-        description: 'Demo-only watchlist. Fictional securities for UI testing.',
-        isDefault: true,
       },
-    }),
-    prisma.watchlist.create({
-      data: {
+    },
+    create: {
+      userId: seedUser.id,
+      name: 'Synthetic High Conviction',
+      description: 'Demo-only watchlist. Fictional securities for UI testing.',
+      isDefault: true,
+    },
+    update: {
+      description: 'Demo-only watchlist. Fictional securities for UI testing.',
+      isDefault: true,
+    },
+  });
+
+  const watchlistB = await prisma.watchlist.upsert({
+    where: {
+      userId_name: {
         userId: seedUser.id,
         name: 'Synthetic Event Radar',
-        description: 'Demo-only event-driven sample watchlist.',
-        isDefault: false,
       },
-    }),
-  ]);
+    },
+    create: {
+      userId: seedUser.id,
+      name: 'Synthetic Event Radar',
+      description: 'Demo-only event-driven sample watchlist.',
+      isDefault: false,
+    },
+    update: {
+      description: 'Demo-only event-driven sample watchlist.',
+      isDefault: false,
+    },
+  });
 
   await prisma.watchlistItem.createMany({
     data: [
-      { watchlistId: watchlists[0].id, companyId: companyByTicker.AURX.id, notes: 'Demo core position candidate.' },
-      { watchlistId: watchlists[0].id, companyId: companyByTicker.NMBL.id, notes: 'Demo logistics momentum name.' },
-      { watchlistId: watchlists[0].id, companyId: companyByTicker.FINT.id, notes: 'Demo fintech quality screen.' },
-      { watchlistId: watchlists[0].id, companyId: companyByTicker.BOLT.id, notes: 'Demo growth basket component.' },
-      { watchlistId: watchlists[1].id, companyId: companyByTicker.CLDN.id, notes: 'Synthetic earnings risk monitor.' },
-      { watchlistId: watchlists[1].id, companyId: companyByTicker.HLIO.id, notes: 'Synthetic weather sensitivity monitor.' },
-      { watchlistId: watchlists[1].id, companyId: companyByTicker.ORBT.id, notes: 'Synthetic launch cadence monitor.' },
-      { watchlistId: watchlists[1].id, companyId: companyByTicker.QNTA.id, notes: 'Synthetic supply chain monitor.' },
+      { watchlistId: watchlistA.id, companyId: companyByTicker.AURX.id, notes: 'Demo core position candidate.' },
+      { watchlistId: watchlistA.id, companyId: companyByTicker.NMBL.id, notes: 'Demo logistics momentum name.' },
+      { watchlistId: watchlistA.id, companyId: companyByTicker.FINT.id, notes: 'Demo fintech quality screen.' },
+      { watchlistId: watchlistA.id, companyId: companyByTicker.BOLT.id, notes: 'Demo growth basket component.' },
+      { watchlistId: watchlistB.id, companyId: companyByTicker.CLDN.id, notes: 'Synthetic earnings risk monitor.' },
+      { watchlistId: watchlistB.id, companyId: companyByTicker.HLIO.id, notes: 'Synthetic weather sensitivity monitor.' },
+      { watchlistId: watchlistB.id, companyId: companyByTicker.ORBT.id, notes: 'Synthetic launch cadence monitor.' },
+      { watchlistId: watchlistB.id, companyId: companyByTicker.QNTA.id, notes: 'Synthetic supply chain monitor.' },
     ],
+    skipDuplicates: true,
   });
 
   const snapshotDate = new Date('2025-02-15T00:00:00Z');
   const snapshotCompanies = ['AURX', 'CLDN', 'NMBL', 'FINT', 'BOLT'];
-  await prisma.companyScoreSnapshot.createMany({
-    data: snapshotCompanies.map((ticker, i) => {
-      const relationshipScore = 55 + i * 4;
-      const signalScore = 58 + i * 3;
-      const earningsScore = 52 + i * 2;
-      return {
+
+  for (const [i, ticker] of snapshotCompanies.entries()) {
+    const relationshipScore = 55 + i * 4;
+    const signalScore = 58 + i * 3;
+    const earningsScore = 52 + i * 2;
+
+    await prisma.companyScoreSnapshot.upsert({
+      where: {
+        companyId_snapshotDate: {
+          companyId: companyByTicker[ticker].id,
+          snapshotDate,
+        },
+      },
+      create: {
         companyId: companyByTicker[ticker].id,
         snapshotDate,
         relationshipScore,
@@ -254,31 +340,61 @@ async function main() {
           runType: 'synthetic-seed-snapshot',
           disclaimer: 'Generated for development and demonstration only; not investment advice.',
         },
-      };
-    }),
-  });
+      },
+      update: {
+        relationshipScore,
+        signalScore,
+        earningsScore,
+        totalScore: Number((relationshipScore * 0.4 + signalScore * 0.4 + earningsScore * 0.2).toFixed(2)),
+        scoreBreakdown: {
+          synthetic: true,
+          weights: { relationship: 0.4, signal: 0.4, earnings: 0.2 },
+        },
+        explanationJson: {
+          runType: 'synthetic-seed-snapshot',
+          disclaimer: 'Generated for development and demonstration only; not investment advice.',
+        },
+      },
+    });
+  }
 
-  await prisma.ingestionLog.create({
-    data: {
+  const existingIngestion = await prisma.ingestionLog.findFirst({
+    where: {
       source: 'synthetic-seed',
       entityType: 'full-dataset',
-      status: 'SUCCEEDED',
       startedAt: new Date('2025-02-15T00:00:00Z'),
-      finishedAt: new Date('2025-02-15T00:00:04Z'),
-      recordsProcessed: companiesData.length + relationshipsData.length + signalSeed.length + earningsData.length,
-      recordsFailed: 0,
-      metadata: {
-        synthetic: true,
-        note: 'Seed generation for local development. Not investment advice.',
-      },
     },
+    select: { id: true },
   });
 
-  console.log('Synthetic seed complete.');
-  console.log(`Companies: ${companiesData.length}`);
-  console.log(`Relationships: ${relationshipsData.length}`);
-  console.log(`Signal events: ${signalSeed.length}`);
-  console.log(`Earnings events: ${earningsData.length}`);
+  if (!existingIngestion) {
+    await prisma.ingestionLog.create({
+      data: {
+        source: 'synthetic-seed',
+        entityType: 'full-dataset',
+        status: 'SUCCEEDED',
+        startedAt: new Date('2025-02-15T00:00:00Z'),
+        finishedAt: new Date('2025-02-15T00:00:04Z'),
+        recordsProcessed: companiesData.length + relationshipsData.length + signalSeed.length + earningsData.length,
+        recordsFailed: 0,
+        metadata: {
+          synthetic: true,
+          note: 'Seed generation for local development. Not investment advice.',
+        },
+      },
+    });
+  }
+
+  const companyCount = await prisma.company.count();
+  const relationshipCount = await prisma.relationship.count();
+  const signalCount = await prisma.signalEvent.count();
+  const earningsCount = await prisma.earningsEvent.count();
+
+  console.log('Synthetic seed complete (idempotent).');
+  console.log(`Companies: ${companyCount}`);
+  console.log(`Relationships: ${relationshipCount}`);
+  console.log(`Signal events: ${signalCount}`);
+  console.log(`Earnings events: ${earningsCount}`);
 }
 
 main()

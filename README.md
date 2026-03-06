@@ -135,7 +135,8 @@ Recommended: keep Netlify environment values in the Netlify UI (not committed in
 Use `backend/render.yaml` or equivalent UI settings:
 
 - **Root directory (backend root):** `backend`
-- **Build command:** `npm install`
+- **Build command:** `npm install --include=dev && npm run prisma:generate`
+- **Pre-deploy command:** `npm run render:postdeploy` (runs `prisma migrate deploy` each deploy)
 - **Start command:** `npm start`
 - **Health check endpoint:** `/api/health`
 - **Required environment variables:**
@@ -143,6 +144,7 @@ Use `backend/render.yaml` or equivalent UI settings:
   - `PORT=10000` (or Render-provided port)
   - `DATABASE_URL`
   - `CLIENT_URL` (frontend origin)
+  - `RENDER_RUN_SEED_ON_DEPLOY=false` (set to `true` only when you explicitly want to reseed)
 
 ## GitHub Actions CI behavior
 
@@ -177,4 +179,3 @@ Recommended placements:
 - **Backtesting:** Evaluate score behavior against historical outcomes with configurable windows.
 - **Auth hardening:** Add robust authentication, authorization, audit logging, and rate limits.
 - **Deploy hooks:** Introduce secure deploy-hook orchestration for release automation across Netlify/Render.
-
