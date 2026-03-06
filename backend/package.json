@@ -1,0 +1,10 @@
+{
+  "name": "@stock-market-relationship/backend",
+  "private": true,
+  "version": "0.1.0",
+  "scripts": {
+    "dev": "echo 'backend dev server not yet scaffolded'",
+    "build": "echo 'backend build step not yet scaffolded'",
+    "start": "echo 'backend start command not yet scaffolded'"
+  }
+}
