@@ -1,12 +1,18 @@
 const express = require('express');
-const { companies, upcomingEarnings, signals, relationships, topScores, watchlists } = require('../data/mockData');
+const { upcomingEarnings, signals, relationships, watchlists } = require('../data/mockData');
 const AppError = require('../utils/appError');
 const { validate, requireNumericParam, requireBody } = require('../middleware/validate');
+const { prisma } = require('../services/prisma');
+const { recalculateAllCompanyScores } = require('../services/scoringEngine');
 
 const router = express.Router();
 
 function mergeValidators(...validators) {
   return (req) => validators.flatMap((validator) => validator(req));
+}
+
+function parseBooleanFlag(value) {
+  return ['1', 'true', 'yes', 'on'].includes(String(value).toLowerCase());
 }
 
 router.get('/health', (req, res) => {
@@ -17,18 +23,57 @@ router.get('/health', (req, res) => {
   });
 });
 
-router.get('/companies', (req, res) => {
-  res.json({ data: companies });
+router.get('/companies', async (req, res, next) => {
+  try {
+    const companies = await prisma.company.findMany({
+      include: {
+        scoreSnapshots: {
+          orderBy: { snapshotDate: 'desc' },
+          take: 1,
+        },
+      },
+      orderBy: { ticker: 'asc' },
+    });
+
+    const data = companies.map((company) => ({
+      ...company,
+      latestScore: company.scoreSnapshots[0] ?? null,
+      scoreSnapshots: undefined,
+    }));
+
+    return res.json({ data });
+  } catch (error) {
+    return next(error);
+  }
 });
 
-router.get('/companies/:id', validate(requireNumericParam('id')), (req, res, next) => {
-  const company = companies.find((entry) => entry.id === Number(req.params.id));
+router.get('/companies/:id', async (req, res, next) => {
+  try {
+    const company = await prisma.company.findUnique({
+      where: { id: req.params.id },
+      include: {
+        scoreSnapshots: {
+          orderBy: { snapshotDate: 'desc' },
+          take: 1,
+        },
+      },
+    });
 
-  if (!company) {
-    return next(new AppError('Company not found', 404));
+    if (!company) {
+      return next(new AppError('Company not found', 404));
+    }
+
+    return res.json({
+      data: {
+        ...company,
+        latestScore: company.scoreSnapshots[0] ?? null,
+        latestScoreExplanation: company.scoreSnapshots[0]?.explanationJson ?? null,
+        scoreSnapshots: undefined,
+      },
+    });
+  } catch (error) {
+    return next(error);
   }
-
-  return res.json({ data: company });
 });
 
 router.get('/earnings/upcoming', (req, res) => {
@@ -43,8 +88,47 @@ router.get('/relationships', (req, res) => {
   res.json({ data: relationships });
 });
 
-router.get('/scores/top', (req, res) => {
-  res.json({ data: topScores });
+router.get('/scores/top', async (req, res, next) => {
+  try {
+    const shouldRefresh = parseBooleanFlag(req.query.refresh);
+
+    if (shouldRefresh) {
+      await recalculateAllCompanyScores();
+    }
+
+    const latest = await prisma.companyScoreSnapshot.aggregate({
+      _max: { snapshotDate: true },
+    });
+
+    if (!latest._max.snapshotDate) {
+      return res.json({ data: [] });
+    }
+
+    const snapshots = await prisma.companyScoreSnapshot.findMany({
+      where: { snapshotDate: latest._max.snapshotDate },
+      include: {
+        company: {
+          select: {
+            id: true,
+            ticker: true,
+            name: true,
+            sector: true,
+          },
+        },
+      },
+      orderBy: { totalScore: 'desc' },
+      take: 25,
+    });
+
+    return res.json({
+      data: snapshots.map((snapshot) => ({
+        ...snapshot,
+        explanation: snapshot.explanationJson ?? null,
+      })),
+    });
+  } catch (error) {
+    return next(error);
+  }
 });
 
 router.post('/watchlists', validate(requireBody(['name'])), (req, res) => {
@@ -70,10 +154,6 @@ router.post(
     }
 
     const companyId = Number(req.body.companyId);
-
-    if (!companies.some((company) => company.id === companyId)) {
-      return next(new AppError('Company not found', 404));
-    }
 
     const item = {
       id: watchlist.items.length + 1,
