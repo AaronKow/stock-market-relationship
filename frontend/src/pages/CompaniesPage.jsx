@@ -16,8 +16,11 @@ export default function CompaniesPage() {
   const [sortDirection, setSortDirection] = useState('asc');
   const [loading, setLoading] = useState(true);
   const [creating, setCreating] = useState(false);
+  const [refreshingAll, setRefreshingAll] = useState(false);
   const [error, setError] = useState('');
   const [createError, setCreateError] = useState('');
+  const [refreshError, setRefreshError] = useState('');
+  const [refreshMessage, setRefreshMessage] = useState('');
   const [tickerInput, setTickerInput] = useState('');
   const [nameInput, setNameInput] = useState('');
   const [sectorInput, setSectorInput] = useState('');
@@ -74,6 +77,23 @@ export default function CompaniesPage() {
     }
   };
 
+  const handleRefreshAllData = async () => {
+    setRefreshingAll(true);
+    setRefreshError('');
+    setRefreshMessage('');
+
+    try {
+      const result = await apiPost('/ingestion/run', {});
+      const snapshots = result?.scoreSummary?.snapshots ?? 0;
+      setRefreshMessage(`Ingestion completed. Updated score snapshots: ${snapshots}.`);
+      await loadCompanies();
+    } catch (err) {
+      setRefreshError(err.message);
+    } finally {
+      setRefreshingAll(false);
+    }
+  };
+
   const sectors = useMemo(() => {
     const distinct = new Set(companies.map((company) => company.sector).filter(Boolean));
     return ['ALL', ...Array.from(distinct).sort()];
@@ -122,47 +142,63 @@ export default function CompaniesPage() {
         title="Companies"
         subtitle="Search, filter, and sort tracked companies."
         action={
-          <form onSubmit={handleAddCompany} className="flex w-full flex-wrap items-center justify-end gap-2 xl:w-auto">
-            <input
-              value={tickerInput}
-              onChange={(event) => setTickerInput(event.target.value)}
-              placeholder="Ticker (e.g. NVDA)"
-              className="w-40 rounded-lg border border-slate-300 px-3 py-2 text-xs text-slate-700"
-            />
-            <input
-              value={nameInput}
-              onChange={(event) => setNameInput(event.target.value)}
-              placeholder="Name (optional)"
-              className="w-44 rounded-lg border border-slate-300 px-3 py-2 text-xs text-slate-700"
-            />
-            <input
-              value={sectorInput}
-              onChange={(event) => setSectorInput(event.target.value)}
-              placeholder="Sector"
-              className="w-28 rounded-lg border border-slate-300 px-3 py-2 text-xs text-slate-700"
-            />
-            <input
-              value={exchangeInput}
-              onChange={(event) => setExchangeInput(event.target.value)}
-              placeholder="Exchange"
-              className="w-24 rounded-lg border border-slate-300 px-3 py-2 text-xs text-slate-700"
-            />
-            <input
-              value={countryInput}
-              onChange={(event) => setCountryInput(event.target.value)}
-              placeholder="Country"
-              className="w-20 rounded-lg border border-slate-300 px-3 py-2 text-xs text-slate-700"
-            />
+          <div className="flex w-full flex-wrap items-center justify-end gap-2 xl:w-auto">
             <button
-              type="submit"
-              disabled={creating}
-              className="rounded-lg border border-slate-300 px-3 py-2 text-xs font-medium text-slate-700 hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-60"
+              type="button"
+              onClick={handleRefreshAllData}
+              disabled={refreshingAll}
+              className="rounded-lg border border-slate-300 bg-slate-900 px-3 py-2 text-xs font-medium text-white hover:bg-slate-700 disabled:cursor-not-allowed disabled:opacity-60"
             >
-              {creating ? 'Adding...' : 'Add Company'}
+              {refreshingAll ? 'Fetching all...' : 'Fetch All Data Now'}
             </button>
-          </form>
+            <form onSubmit={handleAddCompany} className="flex flex-wrap items-center justify-end gap-2">
+              <input
+                value={tickerInput}
+                onChange={(event) => setTickerInput(event.target.value)}
+                placeholder="Ticker (e.g. NVDA)"
+                className="w-40 rounded-lg border border-slate-300 px-3 py-2 text-xs text-slate-700"
+              />
+              <input
+                value={nameInput}
+                onChange={(event) => setNameInput(event.target.value)}
+                placeholder="Name (optional)"
+                className="w-44 rounded-lg border border-slate-300 px-3 py-2 text-xs text-slate-700"
+              />
+              <input
+                value={sectorInput}
+                onChange={(event) => setSectorInput(event.target.value)}
+                placeholder="Sector"
+                className="w-28 rounded-lg border border-slate-300 px-3 py-2 text-xs text-slate-700"
+              />
+              <input
+                value={exchangeInput}
+                onChange={(event) => setExchangeInput(event.target.value)}
+                placeholder="Exchange"
+                className="w-24 rounded-lg border border-slate-300 px-3 py-2 text-xs text-slate-700"
+              />
+              <input
+                value={countryInput}
+                onChange={(event) => setCountryInput(event.target.value)}
+                placeholder="Country"
+                className="w-20 rounded-lg border border-slate-300 px-3 py-2 text-xs text-slate-700"
+              />
+              <button
+                type="submit"
+                disabled={creating}
+                className="rounded-lg border border-slate-300 px-3 py-2 text-xs font-medium text-slate-700 hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {creating ? 'Adding...' : 'Add Company'}
+              </button>
+            </form>
+          </div>
         }
       >
+        {refreshError && (
+          <div className="mb-4 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-700">{refreshError}</div>
+        )}
+        {refreshMessage && (
+          <div className="mb-4 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-700">{refreshMessage}</div>
+        )}
         {createError && (
           <div className="mb-4 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-700">{createError}</div>
         )}
