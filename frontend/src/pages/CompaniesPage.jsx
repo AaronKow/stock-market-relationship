@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { apiFetch } from '../api/client';
+import { apiFetch, apiPost } from '../api/client';
 import CompanyTable from '../components/tables/CompanyTable';
 import FilterControls from '../components/ui/FilterControls';
 import Card from '../components/ui/Card';
@@ -15,7 +15,14 @@ export default function CompaniesPage() {
   const [sortKey, setSortKey] = useState('name');
   const [sortDirection, setSortDirection] = useState('asc');
   const [loading, setLoading] = useState(true);
+  const [creating, setCreating] = useState(false);
   const [error, setError] = useState('');
+  const [createError, setCreateError] = useState('');
+  const [tickerInput, setTickerInput] = useState('');
+  const [nameInput, setNameInput] = useState('');
+  const [sectorInput, setSectorInput] = useState('');
+  const [exchangeInput, setExchangeInput] = useState('');
+  const [countryInput, setCountryInput] = useState('');
 
   const loadCompanies = async () => {
     setLoading(true);
@@ -33,6 +40,39 @@ export default function CompaniesPage() {
   useEffect(() => {
     loadCompanies();
   }, []);
+
+  const handleAddCompany = async (event) => {
+    event.preventDefault();
+    setCreateError('');
+
+    const ticker = tickerInput.trim().toUpperCase();
+    if (!ticker) {
+      setCreateError('Ticker is required.');
+      return;
+    }
+
+    setCreating(true);
+    try {
+      await apiPost('/companies', {
+        ticker,
+        name: nameInput.trim() || undefined,
+        sector: sectorInput.trim() || undefined,
+        exchange: exchangeInput.trim() || undefined,
+        country: countryInput.trim() || undefined,
+      });
+
+      setTickerInput('');
+      setNameInput('');
+      setSectorInput('');
+      setExchangeInput('');
+      setCountryInput('');
+      await loadCompanies();
+    } catch (err) {
+      setCreateError(err.message);
+    } finally {
+      setCreating(false);
+    }
+  };
 
   const sectors = useMemo(() => {
     const distinct = new Set(companies.map((company) => company.sector).filter(Boolean));
@@ -78,7 +118,54 @@ export default function CompaniesPage() {
         <StatCard label="Scored" value={rankedCount} helper="Companies with model snapshot" accent="amber" />
       </div>
 
-      <Card title="Companies" subtitle="Search, filter, and sort tracked companies.">
+      <Card
+        title="Companies"
+        subtitle="Search, filter, and sort tracked companies."
+        action={
+          <form onSubmit={handleAddCompany} className="flex w-full flex-wrap items-center justify-end gap-2 xl:w-auto">
+            <input
+              value={tickerInput}
+              onChange={(event) => setTickerInput(event.target.value)}
+              placeholder="Ticker (e.g. NVDA)"
+              className="w-40 rounded-lg border border-slate-300 px-3 py-2 text-xs text-slate-700"
+            />
+            <input
+              value={nameInput}
+              onChange={(event) => setNameInput(event.target.value)}
+              placeholder="Name (optional)"
+              className="w-44 rounded-lg border border-slate-300 px-3 py-2 text-xs text-slate-700"
+            />
+            <input
+              value={sectorInput}
+              onChange={(event) => setSectorInput(event.target.value)}
+              placeholder="Sector"
+              className="w-28 rounded-lg border border-slate-300 px-3 py-2 text-xs text-slate-700"
+            />
+            <input
+              value={exchangeInput}
+              onChange={(event) => setExchangeInput(event.target.value)}
+              placeholder="Exchange"
+              className="w-24 rounded-lg border border-slate-300 px-3 py-2 text-xs text-slate-700"
+            />
+            <input
+              value={countryInput}
+              onChange={(event) => setCountryInput(event.target.value)}
+              placeholder="Country"
+              className="w-20 rounded-lg border border-slate-300 px-3 py-2 text-xs text-slate-700"
+            />
+            <button
+              type="submit"
+              disabled={creating}
+              className="rounded-lg border border-slate-300 px-3 py-2 text-xs font-medium text-slate-700 hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {creating ? 'Adding...' : 'Add Company'}
+            </button>
+          </form>
+        }
+      >
+        {createError && (
+          <div className="mb-4 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-700">{createError}</div>
+        )}
         <FilterControls
           searchValue={query}
           onSearchChange={setQuery}

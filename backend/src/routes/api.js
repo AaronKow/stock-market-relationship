@@ -10,7 +10,7 @@ const {
   optionalStringBody,
   optionalBooleanBody,
 } = require('../middleware/validate');
-const { listCompanies, getCompanyById } = require('../services/companiesService');
+const { listCompanies, getCompanyById, upsertCompany } = require('../services/companiesService');
 const { getUpcomingEarnings } = require('../services/earningsService');
 const { listSignals } = require('../services/signalsService');
 const { listRelationships } = require('../services/relationshipsService');
@@ -71,6 +71,35 @@ router.get('/companies', async (req, res, next) => {
     return next(error);
   }
 });
+
+router.post(
+  '/companies',
+  validate(
+    mergeValidators(
+      requireNonEmptyStringBody('ticker'),
+      optionalStringBody('name', 120),
+      optionalStringBody('sector', 80),
+      optionalStringBody('industry', 120),
+      optionalStringBody('exchange', 40),
+      optionalStringBody('country', 40),
+    ),
+  ),
+  async (req, res, next) => {
+    try {
+      const data = await upsertCompany({
+        ticker: req.body.ticker,
+        name: req.body.name ?? null,
+        sector: req.body.sector ?? null,
+        industry: req.body.industry ?? null,
+        exchange: req.body.exchange ?? null,
+        country: req.body.country ?? null,
+      });
+      return res.status(201).json({ data });
+    } catch (error) {
+      return next(error);
+    }
+  },
+);
 
 router.get('/companies/:id', validate(requireUuidParam('id')), async (req, res, next) => {
   try {
