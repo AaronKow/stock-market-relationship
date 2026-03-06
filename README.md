@@ -136,8 +136,7 @@ Use `backend/render.yaml` or equivalent UI settings:
 
 - **Root directory (backend root):** `backend`
 - **Build command:** `npm install --include=dev && npm run prisma:generate`
-- **Pre-deploy command:** `npm run render:postdeploy` (runs `prisma migrate deploy` each deploy)
-- **Start command:** `npm start`
+- **Start command:** `npm run start:with-migrate` (runs `prisma migrate deploy` before boot)
 - **Health check endpoint:** `/api/health`
 - **Required environment variables:**
   - `NODE_ENV=production`
