@@ -1,18 +1,51 @@
 const express = require('express');
-const { upcomingEarnings, signals, relationships, watchlists } = require('../data/mockData');
 const AppError = require('../utils/appError');
-const { validate, requireNumericParam, requireBody } = require('../middleware/validate');
-const { prisma } = require('../services/prisma');
-const { recalculateAllCompanyScores } = require('../services/scoringEngine');
+const {
+  validate,
+  mergeValidators,
+  requireUuidParam,
+  requireUuidBody,
+  optionalUuidBody,
+  requireNonEmptyStringBody,
+  optionalStringBody,
+  optionalBooleanBody,
+} = require('../middleware/validate');
+const { listCompanies, getCompanyById } = require('../services/companiesService');
+const { getUpcomingEarnings } = require('../services/earningsService');
+const { listSignals } = require('../services/signalsService');
+const { listRelationships } = require('../services/relationshipsService');
+const { parseBooleanFlag, listTopScores } = require('../services/scoresService');
+const { createWatchlist, addWatchlistItem, removeWatchlistItem } = require('../services/watchlistsService');
 
 const router = express.Router();
 
-function mergeValidators(...validators) {
-  return (req) => validators.flatMap((validator) => validator(req));
+function parsePositiveInt(value, fallback, max = 500) {
+  if (value === undefined || value === null || value === '') {
+    return fallback;
+  }
+
+  const parsed = Number.parseInt(String(value), 10);
+  if (!Number.isInteger(parsed) || parsed <= 0) {
+    throw new AppError('Validation failed', 400, [{ field: 'query', message: 'Expected a positive integer parameter' }]);
+  }
+
+  return Math.min(parsed, max);
 }
 
-function parseBooleanFlag(value) {
-  return ['1', 'true', 'yes', 'on'].includes(String(value).toLowerCase());
+function validateOptionalUuidQuery(fieldName) {
+  return (req, res, next) => {
+    const value = req.query[fieldName];
+    if (value === undefined) {
+      return next();
+    }
+
+    const isValid = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(String(value));
+    if (!isValid) {
+      return next(new AppError('Validation failed', 400, [{ field: `query.${fieldName}`, message: 'Must be a UUID' }]));
+    }
+
+    return next();
+  };
 }
 
 router.get('/health', (req, res) => {
@@ -25,21 +58,20 @@ router.get('/health', (req, res) => {
 
 router.get('/companies', async (req, res, next) => {
   try {
-    const companies = await prisma.company.findMany({
-      include: {
-        scoreSnapshots: {
-          orderBy: { snapshotDate: 'desc' },
-          take: 1,
-        },
-      },
-      orderBy: { ticker: 'asc' },
-    });
+    const data = await listCompanies();
+    return res.json({ data });
+  } catch (error) {
+    return next(error);
+  }
+});
 
-    const data = companies.map((company) => ({
-      ...company,
-      latestScore: company.scoreSnapshots[0] ?? null,
-      scoreSnapshots: undefined,
-    }));
+router.get('/companies/:id', validate(requireUuidParam('id')), async (req, res, next) => {
+  try {
+    const data = await getCompanyById(req.params.id);
+
+    if (!data) {
+      return next(new AppError('Company not found', 404));
+    }
 
     return res.json({ data });
   } catch (error) {
@@ -47,78 +79,45 @@ router.get('/companies', async (req, res, next) => {
   }
 });
 
-router.get('/companies/:id', async (req, res, next) => {
+router.get('/earnings/upcoming', async (req, res, next) => {
   try {
-    const company = await prisma.company.findUnique({
-      where: { id: req.params.id },
-      include: {
-        scoreSnapshots: {
-          orderBy: { snapshotDate: 'desc' },
-          take: 1,
-        },
-      },
-    });
-
-    if (!company) {
-      return next(new AppError('Company not found', 404));
-    }
-
-    return res.json({
-      data: {
-        ...company,
-        latestScore: company.scoreSnapshots[0] ?? null,
-        latestScoreExplanation: company.scoreSnapshots[0]?.explanationJson ?? null,
-        scoreSnapshots: undefined,
-      },
-    });
+    const windowDays = parsePositiveInt(req.query.days, 30, 365);
+    const data = await getUpcomingEarnings({ windowDays });
+    return res.json({ data });
   } catch (error) {
     return next(error);
   }
 });
 
-router.get('/earnings/upcoming', (req, res) => {
-  res.json({ data: upcomingEarnings });
+router.get('/signals', validateOptionalUuidQuery('companyId'), async (req, res, next) => {
+  try {
+    const limit = parsePositiveInt(req.query.limit, 100, 500);
+    const data = await listSignals({
+      companyId: req.query.companyId,
+      limit,
+    });
+
+    return res.json({ data });
+  } catch (error) {
+    return next(error);
+  }
 });
 
-router.get('/signals', (req, res) => {
-  res.json({ data: signals });
-});
-
-router.get('/relationships', (req, res) => {
-  res.json({ data: relationships });
+router.get('/relationships', validateOptionalUuidQuery('companyId'), async (req, res, next) => {
+  try {
+    const data = await listRelationships({ companyId: req.query.companyId });
+    return res.json({ data });
+  } catch (error) {
+    return next(error);
+  }
 });
 
 router.get('/scores/top', async (req, res, next) => {
   try {
-    const shouldRefresh = parseBooleanFlag(req.query.refresh);
+    const refresh = parseBooleanFlag(req.query.refresh);
+    const limit = parsePositiveInt(req.query.limit, 25, 100);
 
-    if (shouldRefresh) {
-      await recalculateAllCompanyScores();
-    }
-
-    const latest = await prisma.companyScoreSnapshot.aggregate({
-      _max: { snapshotDate: true },
-    });
-
-    if (!latest._max.snapshotDate) {
-      return res.json({ data: [] });
-    }
-
-    const snapshots = await prisma.companyScoreSnapshot.findMany({
-      where: { snapshotDate: latest._max.snapshotDate },
-      include: {
-        company: {
-          select: {
-            id: true,
-            ticker: true,
-            name: true,
-            sector: true,
-          },
-        },
-      },
-      orderBy: { totalScore: 'desc' },
-      take: 25,
-    });
+    const snapshots = await listTopScores({ refresh, limit });
 
     return res.json({
       data: snapshots.map((snapshot) => ({
@@ -131,60 +130,64 @@ router.get('/scores/top', async (req, res, next) => {
   }
 });
 
-router.post('/watchlists', validate(requireBody(['name'])), (req, res) => {
-  const watchlist = {
-    id: watchlists.length + 1,
-    name: req.body.name,
-    items: [],
-  };
+router.post(
+  '/watchlists',
+  validate(
+    mergeValidators(
+      requireNonEmptyStringBody('name'),
+      optionalStringBody('description', 500),
+      optionalUuidBody('userId'),
+      optionalBooleanBody('isDefault'),
+    ),
+  ),
+  async (req, res, next) => {
+    try {
+      const data = await createWatchlist({
+        name: req.body.name.trim(),
+        description: req.body.description?.trim() || null,
+        userId: req.body.userId ?? null,
+        isDefault: req.body.isDefault ?? false,
+      });
 
-  watchlists.push(watchlist);
-
-  res.status(201).json({ data: watchlist });
-});
+      return res.status(201).json({ data });
+    } catch (error) {
+      return next(error);
+    }
+  },
+);
 
 router.post(
   '/watchlists/:id/items',
-  validate(mergeValidators(requireNumericParam('id'), requireBody(['companyId']))),
-  (req, res, next) => {
-    const watchlist = watchlists.find((entry) => entry.id === Number(req.params.id));
+  validate(mergeValidators(requireUuidParam('id'), requireUuidBody('companyId'), optionalStringBody('notes', 500))),
+  async (req, res, next) => {
+    try {
+      const data = await addWatchlistItem({
+        watchlistId: req.params.id,
+        companyId: req.body.companyId,
+        notes: req.body.notes?.trim() || null,
+      });
 
-    if (!watchlist) {
-      return next(new AppError('Watchlist not found', 404));
+      return res.status(201).json({ data });
+    } catch (error) {
+      return next(error);
     }
-
-    const companyId = Number(req.body.companyId);
-
-    const item = {
-      id: watchlist.items.length + 1,
-      companyId,
-    };
-
-    watchlist.items.push(item);
-
-    return res.status(201).json({ data: item });
   },
 );
 
 router.delete(
   '/watchlists/:id/items/:itemId',
-  validate(mergeValidators(requireNumericParam('id'), requireNumericParam('itemId'))),
-  (req, res, next) => {
-    const watchlist = watchlists.find((entry) => entry.id === Number(req.params.id));
+  validate(mergeValidators(requireUuidParam('id'), requireUuidParam('itemId'))),
+  async (req, res, next) => {
+    try {
+      const data = await removeWatchlistItem({
+        watchlistId: req.params.id,
+        itemId: req.params.itemId,
+      });
 
-    if (!watchlist) {
-      return next(new AppError('Watchlist not found', 404));
+      return res.json({ data });
+    } catch (error) {
+      return next(error);
     }
-
-    const itemIndex = watchlist.items.findIndex((item) => item.id === Number(req.params.itemId));
-
-    if (itemIndex < 0) {
-      return next(new AppError('Watchlist item not found', 404));
-    }
-
-    const [removed] = watchlist.items.splice(itemIndex, 1);
-
-    return res.json({ data: removed });
   },
 );
 

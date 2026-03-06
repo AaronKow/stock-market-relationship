@@ -13,6 +13,7 @@ const DEFAULT_RELATIONSHIP_STRENGTH = 0.5;
 const EARNINGS_BOOST_WINDOW_DAYS = 14;
 const SIGNAL_HALF_LIFE_DAYS = 10;
 const NEGATIVE_CLUSTER_WINDOW_DAYS = 7;
+const SEVERE_NEGATIVE_CONFIDENCE = 0.7;
 
 function startOfUtcDay(date = new Date()) {
   return new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()));
@@ -50,8 +51,13 @@ function computeEarningsTimingBoost(upcomingEarningsDate, asOfDate = new Date())
 }
 
 function computeRiskPenalty(signalEvents, asOfDate = new Date()) {
-  const clusteredNegatives = signalEvents.filter((signalEvent) => {
+  const clusteredSevereNegatives = signalEvents.filter((signalEvent) => {
     if (signalEvent.sentiment !== 'NEGATIVE') {
+      return false;
+    }
+
+    const confidence = signalEvent.confidence ?? DEFAULT_SIGNAL_CONFIDENCE;
+    if (confidence < SEVERE_NEGATIVE_CONFIDENCE) {
       return false;
     }
 
@@ -59,13 +65,18 @@ function computeRiskPenalty(signalEvents, asOfDate = new Date()) {
     return ageInDays >= 0 && ageInDays <= NEGATIVE_CLUSTER_WINDOW_DAYS;
   });
 
-  const clusterCount = clusteredNegatives.length;
-  const penalty = clusterCount > 1 ? Math.pow(clusterCount - 1, 1.2) * 4 : 0;
+  const clusterCount = clusteredSevereNegatives.length;
+  const confidenceSum = clusteredSevereNegatives.reduce(
+    (accumulator, signalEvent) => accumulator + (signalEvent.confidence ?? DEFAULT_SIGNAL_CONFIDENCE),
+    0,
+  );
+  const penalty = clusterCount > 1 ? Math.pow(clusterCount - 1, 1.2) * 4 * (confidenceSum / clusterCount) : 0;
 
   return {
     penalty,
     clusterCount,
     windowDays: NEGATIVE_CLUSTER_WINDOW_DAYS,
+    minConfidence: SEVERE_NEGATIVE_CONFIDENCE,
   };
 }
 
@@ -124,8 +135,9 @@ function buildExplanation({
         freshnessHalfLifeDays: SIGNAL_HALF_LIFE_DAYS,
       },
       riskPenalty: {
-        clusteredNegativeSignals: riskPenalty.clusterCount,
+        clusteredSevereNegativeSignals: riskPenalty.clusterCount,
         windowDays: riskPenalty.windowDays,
+        minConfidence: riskPenalty.minConfidence,
         penalty: riskPenalty.penalty,
       },
       revisions: revisions,
