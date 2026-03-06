@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useParams } from 'react-router-dom';
-import { apiFetch } from '../api/client';
+import { apiFetch, apiPost } from '../api/client';
 import SignalsTable from '../components/tables/SignalsTable';
 import Card from '../components/ui/Card';
 import ScoreBadge from '../components/ui/ScoreBadge';
@@ -18,6 +18,7 @@ export default function CompanyDetailsPage() {
   const [sortKey, setSortKey] = useState('occurredAt');
   const [sortDirection, setSortDirection] = useState('desc');
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState('');
 
   const loadDetails = async () => {
@@ -42,6 +43,20 @@ export default function CompanyDetailsPage() {
   useEffect(() => {
     loadDetails();
   }, [id]);
+
+  const handleFetchLatestData = async () => {
+    setRefreshing(true);
+    setError('');
+
+    try {
+      await apiPost('/ingestion/run', { companyId: id });
+      await loadDetails();
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setRefreshing(false);
+    }
+  };
 
   const sortedSignals = useMemo(() => {
     const rows = signals.filter((signal) => sentiment === 'ALL' || signal.sentiment === sentiment);
@@ -71,7 +86,19 @@ export default function CompanyDetailsPage() {
       <Card
         title={`${company.ticker} - ${company.name}`}
         subtitle="Company fundamentals and signal context"
-        action={<ScoreBadge score={company.latestScore?.totalScore || 0} label="Total" />}
+        action={
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={handleFetchLatestData}
+              disabled={refreshing}
+              className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {refreshing ? 'Fetching...' : 'Fetch Latest Data'}
+            </button>
+            <ScoreBadge score={company.latestScore?.totalScore || 0} label="Total" />
+          </div>
+        }
       >
         <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
           <StatCard label="Sector" value={company.sector || 'N/A'} helper={company.industry || 'No industry'} accent="blue" />

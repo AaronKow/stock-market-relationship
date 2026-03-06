@@ -15,6 +15,7 @@ const { getUpcomingEarnings } = require('../services/earningsService');
 const { listSignals } = require('../services/signalsService');
 const { listRelationships } = require('../services/relationshipsService');
 const { parseBooleanFlag, listTopScores } = require('../services/scoresService');
+const { runManualIngestion } = require('../services/manualIngestionService');
 const {
   createWatchlist,
   addWatchlistItem,
@@ -131,6 +132,18 @@ router.get('/scores/top', async (req, res, next) => {
         explanation: snapshot.explanationJson ?? null,
       })),
     });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+router.post('/ingestion/run', validate(optionalUuidBody('companyId')), async (req, res, next) => {
+  try {
+    const data = await runManualIngestion({
+      companyId: req.body.companyId ?? null,
+    });
+
+    return res.json({ data });
   } catch (error) {
     return next(error);
   }
