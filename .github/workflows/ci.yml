@@ -1,0 +1,89 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies (root + workspaces)
+        run: npm ci --workspaces --include-workspace-root
+
+      - name: Run optional lint/test checks
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          has_script() {
+            local package_path="$1"
+            local script_name="$2"
+            node -e "const pkg=require('./${package_path}/package.json'); process.exit(pkg.scripts && pkg.scripts['${script_name}'] ? 0 : 1)"
+          }
+
+          run_if_present() {
+            local package_path="$1"
+            local npm_scope="$2"
+            local script_name="$3"
+
+            if has_script "$package_path" "$script_name"; then
+              echo "▶ Running ${npm_scope} ${script_name}"
+              npm ${npm_scope} run "$script_name"
+            else
+              echo "⏭ Skipping ${npm_scope} ${script_name} (script not defined)"
+            fi
+          }
+
+          run_if_present "." "" lint
+          run_if_present "." "" test
+          run_if_present "frontend" "--workspace frontend" lint
+          run_if_present "frontend" "--workspace frontend" test
+          run_if_present "backend" "--workspace backend" lint
+          run_if_present "backend" "--workspace backend" test
+
+      - name: Frontend build validation
+        run: npm --workspace frontend run build
+
+      - name: Backend Prisma generate
+        run: npm --workspace backend run prisma:generate
+
+      - name: Backend build validation
+        run: npm --workspace backend run build
+
+      - name: Backend startup smoke test
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          PORT=4010 \
+          NODE_ENV=ci \
+          CLIENT_URL=http://localhost:5173 \
+          DATABASE_URL=postgresql://ci:ci@localhost:5432/ci \
+          npm --workspace backend run start &
+
+          SERVER_PID=$!
+          trap 'kill $SERVER_PID 2>/dev/null || true' EXIT
+
+          for attempt in {1..20}; do
+            if curl -fsS "http://127.0.0.1:${PORT}/api/health" >/dev/null; then
+              echo "Backend health check succeeded"
+              exit 0
+            fi
+            sleep 1
+          done
+
+          echo "Backend failed to start in time"
+          exit 1
